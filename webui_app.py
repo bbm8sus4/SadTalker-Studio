@@ -630,6 +630,8 @@ async def api_generate(
         if ext not in ALLOWED_IMG:
             return JSONResponse({"detail": f"ไฟล์รูปต้องเป็น {', '.join(ALLOWED_IMG)}"}, 400)
         content = await image.read()
+        if len(content) < 100:
+            return JSONResponse({"detail": "ไฟล์รูปว่างหรือเสียหาย"}, 400)
         if len(content) > MAX_UPLOAD_BYTES:
             return JSONResponse({"detail": f"ไฟล์ใหญ่เกิน {MAX_UPLOAD_BYTES // 1024 // 1024} MB"}, 400)
         img_path = UPLOAD_DIR / f"{job_id}_img{ext}"
