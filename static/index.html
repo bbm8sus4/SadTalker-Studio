@@ -288,16 +288,34 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
   justify-content:center;align-items:center;padding:24px;
 }
 .ov.show{display:flex;}
+/* ── Job tracker bar (non-blocking, stacks multiple jobs) ── */
+.job-tracker{
+  position:fixed;top:var(--topbar);right:0;left:var(--sidebar);z-index:400;
+  display:flex;flex-direction:column;gap:0;pointer-events:none;
+}
+.job-bar{
+  pointer-events:auto;display:flex;align-items:center;gap:12px;
+  padding:10px 20px;background:var(--surface);border-bottom:1px solid var(--border);
+  font-size:.84rem;animation:jbIn .3s ease-out;transition:opacity .3s;
+  box-shadow:0 2px 8px rgba(0,0,0,.06);
+}
+.job-bar .jb-name{font-weight:600;color:var(--text);min-width:80px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;}
+.job-bar .jb-progress{flex:1;height:5px;background:var(--bg2);border-radius:3px;overflow:hidden;min-width:100px;}
+.job-bar .jb-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:3px;transition:width .5s;width:0%;}
+.job-bar .jb-pct{font-weight:700;color:var(--accent);min-width:36px;text-align:right;}
+.job-bar .jb-step{color:var(--text2);flex-shrink:0;}
+.job-bar .jb-done{color:var(--green);font-weight:600;}
+.job-bar .jb-err{color:var(--red);font-weight:600;}
+.job-bar .jb-actions{display:flex;gap:6px;flex-shrink:0;}
+@keyframes jbIn{from{opacity:0;transform:translateY(-10px);}to{opacity:1;transform:translateY(0);}}
+
+/* Result overlay (only shown when user clicks "ดูวิดีโอ") */
 .ocard{
   background:var(--surface);border:1px solid var(--border);border-radius:16px;
   padding:32px 40px;text-align:center;box-shadow:0 16px 64px rgba(0,0,0,.12);
   max-width:460px;width:100%;transition:background .3s,border .3s;
 }
 .ocard h3{margin-bottom:8px;font-size:1.05rem;font-weight:600;}
-.o-pct{font-size:2.2rem;font-weight:700;color:var(--accent);margin:12px 0 6px;}
-.o-bar{background:var(--bg2);border-radius:5px;overflow:hidden;height:6px;margin-bottom:10px;}
-.o-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--green));width:0%;transition:width .5s;border-radius:5px;}
-.o-step{font-size:.84rem;color:var(--text2);}
 .ocard video{width:100%;border-radius:10px;margin-bottom:14px;}
 .ocard .acts{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
 
@@ -391,6 +409,9 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
   .hg{grid-template-columns:1fr;}
   .ig{grid-template-columns:repeat(auto-fill,minmax(58px,1fr));}
   .ocard{padding:24px 20px;}
+  .job-tracker{left:0;}
+  .job-bar .jb-name{max-width:80px;}
+  .job-bar .jb-step{display:none;}
 }
 </style>
 </head>
@@ -875,20 +896,16 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
 </div><!-- /main-wrap -->
 </div><!-- /layout -->
 
-<!-- OVERLAYS -->
-<div class="ov" id="ovProg"><div class="ocard">
-  <h3>กำลังสร้างวิดีโอ</h3>
-  <div class="o-pct" id="oPct">0%</div>
-  <div class="o-bar"><div class="o-fill" id="oFill"></div></div>
-  <div class="o-step" id="oStep">เริ่มต้น...</div>
-</div></div>
+<!-- Job tracker (non-blocking progress bars) -->
+<div class="job-tracker" id="jobTracker"></div>
 
+<!-- Result overlay (only shown on explicit "ดูวิดีโอ" click) -->
 <div class="ov" id="ovRes"><div class="ocard">
   <h3 style="color:var(--green);">สำเร็จ!</h3>
   <video id="rVid" controls autoplay></video>
   <div class="acts">
     <a class="btn btn-g" id="dlBtn" download>ดาวน์โหลด</a>
-    <button class="btn btn-o" onclick="closeRes()">สร้างใหม่</button>
+    <button class="btn btn-o" onclick="closeRes()">ปิด</button>
   </div>
 </div></div>
 
@@ -1174,9 +1191,6 @@ async function generate(){
   if(!selImg&&!upImg){toast('เลือกรูปหน้าก่อน โดยอัปโหลดหรือเลือกจากตัวอย่าง','warn');return;}
   trackEvent('generate_click',{preset,mode});
 
-  $('goBtn').disabled=true;$('goBtn').textContent='กำลังสร้าง...';
-  $('badge').textContent='กำลัง Generate...';$('badge').style.background='var(--red-s)';$('badge').style.color='var(--red)';
-  $('ovProg').classList.add('show');$('oFill').style.width='0%';$('oPct').textContent='0%';
   $('ebox').style.display='none';
 
   const fd=new FormData();
@@ -1188,48 +1202,102 @@ async function generate(){
   fd.append('still',$('still').classList.contains('on')?'true':'false');
   fd.append('expression_scale',$('expr').value);fd.append('pose_style',$('pose').value);
   fd.append('input_yaw',$('yaw').value);fd.append('input_pitch',$('pit').value);fd.append('input_roll',$('rol').value);
-  fd.append('output_name',$('outName').value);
+  const outName=$('outName').value||('video_'+Date.now());
+  fd.append('output_name',outName);
 
   try{
     const d=await api.post('/api/generate',fd);
-    doPoll(d.job_id);
-  }catch(e){const m=errLog.handle('generate',e);showFriendlyError(m);rst();}
+    addJobBar(d.job_id, outName);
+    toast('เริ่มสร้างวิดีโอแล้ว ใช้งานต่อได้เลย!','success');
+    $('text').value='';
+  }catch(e){const m=errLog.handle('generate',e);showFriendlyError(m);}
 }
 
-const STP={starting:'เริ่มต้น...',tts:'แปลงข้อความเป็นเสียง...',inference:'กำลัง render (5-10 นาที)...'};
-function doPoll(jid){
+/* ── Job tracker — non-blocking progress bars ── */
+const activeJobs={};
+const STP={starting:'เริ่มต้น...',tts:'เสียง...',inference:'render...'};
+
+function addJobBar(jid, name){
+  const tracker=$('jobTracker');
+  const bar=document.createElement('div');
+  bar.className='job-bar';bar.id='jb-'+jid;
+  bar.innerHTML=`<span class="jb-name">${esc(name)}</span>
+    <div class="jb-progress"><div class="jb-fill" id="jbf-${jid}"></div></div>
+    <span class="jb-pct" id="jbp-${jid}">0%</span>
+    <span class="jb-step" id="jbs-${jid}">เริ่มต้น...</span>
+    <span class="jb-actions" id="jba-${jid}"></span>`;
+  tracker.appendChild(bar);
+  $('badge').textContent=`กำลังสร้าง (${tracker.children.length})`;
+  $('badge').style.background='var(--accent-s)';$('badge').style.color='var(--accent)';
+  pollJob(jid);
+}
+
+function pollJob(jid){
   let fp=10,fails=0;
   const started=Date.now();
-  const MAX_POLL=20*60*1000; // 20 min timeout
-  poll=setInterval(async()=>{
-    if(Date.now()-started>MAX_POLL){clearInterval(poll);err('Timeout: ใช้เวลานานเกินไป (>20 นาที)');return;}
+  const timer=setInterval(async()=>{
+    if(Date.now()-started>20*60*1000){clearInterval(timer);jobError(jid,'Timeout');return;}
     try{
       const r=await fetch('/api/status/'+jid);
-      if(!r.ok){if(++fails>5){clearInterval(poll);err('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');return;}return;}
+      if(!r.ok){if(++fails>5){clearInterval(timer);jobError(jid,'เชื่อมต่อไม่ได้');return;}return;}
       fails=0;
       const j=await r.json();
+      const fill=$('jbf-'+jid),pct=$('jbp-'+jid),step=$('jbs-'+jid),acts=$('jba-'+jid);
+      if(!fill)return clearInterval(timer);
+
       if(j.status==='done'){
-        clearInterval(poll);
-        $('oFill').style.width='100%';$('oPct').textContent='100%';$('oStep').textContent='เสร็จ!';
-        setTimeout(()=>{
-          $('ovProg').classList.remove('show');$('ovRes').classList.add('show');
-          $('rVid').src=j.result;$('dlBtn').href=j.result;$('dlBtn').download=j.filename||'output.mp4';
-          rst();
-        },600);return;
+        clearInterval(timer);
+        if(fill)fill.style.width='100%';
+        if(pct)pct.textContent='100%';
+        if(step){step.className='jb-done';step.textContent='เสร็จแล้ว!';}
+        if(acts)acts.innerHTML=`<button class="btn btn-sm btn-g" onclick="viewResult('${esc(j.result)}','${esc(j.filename)}')">ดูวิดีโอ</button><a class="btn btn-sm btn-o" href="${esc(j.result)}" download="${esc(j.filename)}">โหลด</a>`;
+        toast('สร้างวิดีโอเสร็จแล้ว!','success');
+        updateBadge();
+        return;
       }
-      if(j.status==='error'){clearInterval(poll);$('ovProg').classList.remove('show');err(j.error||'Error');rst();return;}
+      if(j.status==='error'){
+        clearInterval(timer);
+        if(step){step.className='jb-err';step.textContent=j.error?.substring(0,50)||'เกิดข้อผิดพลาด';}
+        if(pct)pct.textContent='';
+        if(acts)acts.innerHTML=`<button class="btn btn-sm btn-o" onclick="dismissJob('${jid}')">ปิด</button>`;
+        toast(ERR_MAP[j.error]||'สร้างวิดีโอไม่สำเร็จ','error');
+        updateBadge();
+        return;
+      }
       const rp=j.progress||0;if(rp>fp)fp=rp;else if(fp<92)fp+=.25;
-      $('oFill').style.width=fp+'%';$('oPct').textContent=Math.round(fp)+'%';
-      $('oStep').textContent=STP[j.step]||'Processing...';
-    }catch(e){if(++fails>5){clearInterval(poll);err('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');}}
+      if(fill)fill.style.width=fp+'%';
+      if(pct)pct.textContent=Math.round(fp)+'%';
+      if(step)step.textContent=STP[j.step]||'กำลังทำ...';
+    }catch(e){if(++fails>5){clearInterval(timer);jobError(jid,'เชื่อมต่อไม่ได้');}}
   },2000);
 }
-function rst(){
-  $('goBtn').disabled=false;$('goBtn').textContent='Generate';
-  $('badge').textContent='พร้อมใช้งาน';$('badge').style.background='';$('badge').style.color='';
+
+function jobError(jid,msg){
+  const step=$('jbs-'+jid),pct=$('jbp-'+jid),acts=$('jba-'+jid);
+  if(step){step.className='jb-err';step.textContent=msg;}
+  if(pct)pct.textContent='';
+  if(acts)acts.innerHTML=`<button class="btn btn-sm btn-o" onclick="dismissJob('${jid}')">ปิด</button>`;
+  updateBadge();
 }
-function err(m){$('ovProg').classList.remove('show');showFriendlyError(ERR_MAP[m]||m);rst();if(poll)clearInterval(poll);}
-function closeRes(){$('ovRes').classList.remove('show');$('text').value='';}
+
+function dismissJob(jid){
+  const bar=$('jb-'+jid);if(bar)bar.remove();
+  updateBadge();
+}
+
+function viewResult(url,filename){
+  $('ovRes').classList.add('show');
+  $('rVid').src=url;$('dlBtn').href=url;$('dlBtn').download=filename||'output.mp4';
+}
+
+function updateBadge(){
+  const tracker=$('jobTracker');
+  const running=tracker.querySelectorAll('.jb-step:not(.jb-done):not(.jb-err)').length;
+  if(running>0){$('badge').textContent=`กำลังสร้าง (${running})`;$('badge').style.background='var(--accent-s)';$('badge').style.color='var(--accent)';}
+  else{$('badge').textContent='พร้อมใช้งาน';$('badge').style.background='';$('badge').style.color='';}
+}
+
+function closeRes(){$('ovRes').classList.remove('show');}}
 
 /* ── Helpers ── */
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
