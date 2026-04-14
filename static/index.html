@@ -922,7 +922,7 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
     <table class="confirm-table" id="confirmTable"></table>
     <div class="confirm-est">
       <div class="est-time" id="estTime">~3 นาที</div>
-      <div class="est-label">เวลาโดยประมาณ (CPU)</div>
+      <div class="est-label">เวลาโดยประมาณ (Apple GPU)</div>
     </div>
     <div class="confirm-btns">
       <button class="btn btn-o" onclick="closeConfirm()">ยกเลิก</button>
@@ -1254,7 +1254,8 @@ function showConfirm(mode, txt){
   const estFrames=estAudioSec*25;
 
   // Estimate render time (CPU M-series: ~1.5s/frame draft, ~3s/frame with enhancer)
-  const secPerFrame=hasEnhancer?3:1.5;
+  // MPS (Apple GPU): ~0.3s/frame draft, ~0.6s/frame with enhance
+  const secPerFrame=hasEnhancer?0.6:0.3;
   const estRenderSec=Math.round(estFrames*secPerFrame);
   const estTotalMin=Math.max(1,Math.round((estRenderSec+10)/60));
 
