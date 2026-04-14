@@ -1210,7 +1210,7 @@ async function generate(){
     addJobBar(d.job_id, outName);
     toast('เริ่มสร้างวิดีโอแล้ว ใช้งานต่อได้เลย!','success');
     $('text').value='';
-  }catch(e){const m=errLog.handle('generate',e);showFriendlyError(m);}
+  }catch(e){const m=errLog.handle('generate',e);toast(m,'error',6000);showFriendlyError(m);}
 }
 
 /* ── Job tracker — non-blocking progress bars ── */
