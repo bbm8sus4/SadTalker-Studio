@@ -307,7 +307,61 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
 .hi .t{font-weight:600;font-size:.85rem;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .hi .d{font-size:.72rem;color:var(--muted);margin-bottom:8px;}
 .hi .a{display:flex;gap:6px;}
-.he{text-align:center;padding:60px;color:var(--muted);font-size:.9rem;}
+/* ── Empty states (friendly, guiding) ── */
+.he{text-align:center;padding:48px 20px;color:var(--text2);font-size:.9rem;line-height:1.7;}
+.he svg{width:48px;height:48px;color:var(--muted);margin-bottom:12px;display:block;margin-inline:auto;}
+.he .he-title{font-weight:600;font-size:1rem;color:var(--text);margin-bottom:4px;}
+.he .he-hint{font-size:.82rem;color:var(--muted);margin-top:6px;}
+.he .he-action{display:inline-block;margin-top:14px;padding:8px 20px;border-radius:8px;background:var(--accent);color:#fff;font-weight:600;font-size:.84rem;cursor:pointer;text-decoration:none;}
+
+/* ── Toast notifications (replaces alert()) ── */
+.toast-container{position:fixed;top:16px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none;}
+.toast{
+  pointer-events:auto;padding:12px 20px;border-radius:10px;font-size:.86rem;
+  max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,.12);
+  display:flex;align-items:center;gap:10px;
+  animation:toastIn .3s ease-out;transition:opacity .3s;
+  font-family:inherit;
+}
+.toast.info{background:var(--accent);color:#fff;}
+.toast.success{background:var(--green);color:#fff;}
+.toast.warn{background:#F59E0B;color:#fff;}
+.toast.error{background:var(--red);color:#fff;}
+@keyframes toastIn{from{opacity:0;transform:translateX(40px);}to{opacity:1;transform:translateX(0);}}
+
+/* ── Undo snackbar (replaces confirm() for destructive actions) ── */
+.snackbar{
+  position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:9999;
+  background:var(--text);color:var(--bg);padding:12px 20px;border-radius:10px;
+  font-size:.88rem;display:flex;align-items:center;gap:14px;
+  box-shadow:0 8px 32px rgba(0,0,0,.2);animation:snackIn .3s ease-out;
+  font-family:inherit;
+}
+.snackbar button{
+  background:transparent;border:1.5px solid rgba(255,255,255,.5);color:inherit;
+  padding:5px 14px;border-radius:6px;font-weight:700;cursor:pointer;font-size:.84rem;
+  font-family:inherit;
+}
+.snackbar button:hover{background:rgba(255,255,255,.15);}
+.snackbar .timer{width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.2);overflow:hidden;}
+.snackbar .timer-fill{height:100%;background:rgba(255,255,255,.6);animation:timerShrink var(--undo-time,7s) linear;}
+@keyframes snackIn{from{opacity:0;transform:translate(-50%,20px);}to{opacity:1;transform:translate(-50%,0);}}
+@keyframes timerShrink{from{width:100%;}to{width:0%;}}
+
+/* ── Skeleton loading screens ── */
+.skel{border-radius:8px;background:linear-gradient(90deg,var(--bg2) 25%,var(--border) 50%,var(--bg2) 75%);background-size:200% 100%;animation:skelShimmer 1.5s infinite;}
+@keyframes skelShimmer{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
+.skel-row{height:14px;margin-bottom:8px;width:80%;}
+.skel-card{height:120px;margin-bottom:14px;}
+.skel-img{width:100%;aspect-ratio:1;margin-bottom:6px;}
+
+/* ── Error banner (friendly, not technical) ── */
+.ebox{
+  display:none;padding:16px 20px;border-radius:12px;font-size:.88rem;margin-top:14px;
+  background:var(--red-s);color:var(--red);line-height:1.6;
+}
+.ebox .ebox-title{font-weight:700;margin-bottom:4px;}
+.ebox .ebox-hint{font-size:.8rem;color:var(--muted);margin-top:6px;}
 
 /* ═══════════════════════════════════════════
    RESPONSIVE
@@ -479,7 +533,11 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
           <div class="alink" onclick="go('settings')">ตั้งค่าขั้นสูง &rarr;</div>
         </div>
       </div>
-      <div class="ebox" id="ebox"></div>
+      <div class="ebox" id="ebox">
+        <div class="ebox-title" id="ebox-title">มีบางอย่างผิดพลาด</div>
+        <div id="ebox-msg"></div>
+        <div class="ebox-hint">ลองอีกครั้ง หรือเปลี่ยนรูป/ข้อความแล้วลองใหม่ หากยังไม่ได้ แจ้งผู้ดูแลระบบ</div>
+      </div>
     </div>
 
     <!-- PAGE: SETTINGS -->
@@ -526,13 +584,25 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
     <!-- PAGE: HISTORY -->
     <div class="pg" id="pg-history">
       <div class="hg" id="hGrid"></div>
-      <div class="he" id="hEmpty">ยังไม่มีวิดีโอ</div>
+      <div class="he" id="hEmpty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="2.18"/><polygon points="10 8 16 12 10 16"/></svg>
+        <div class="he-title">ยังไม่มีวิดีโอที่สร้าง</div>
+        เริ่มสร้างวิดีโอแรกได้เลย! เลือกรูปหน้า พิมพ์ข้อความ แล้วกด Generate
+        <div class="he-hint">วิดีโอที่สร้างจะแสดงที่นี่ พร้อมดาวน์โหลดและจัดการ</div>
+        <a class="he-action" onclick="go('create')">สร้างวิดีโอ</a>
+      </div>
     </div>
 
     <!-- PAGE: UPLOADS -->
     <div class="pg" id="pg-uploads">
       <div class="hg" id="uGrid"></div>
-      <div class="he" id="uEmpty">ยังไม่มีรูปที่อัปโหลด</div>
+      <div class="he" id="uEmpty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        <div class="he-title">ยังไม่มีรูปที่อัปโหลด</div>
+        เมื่ออัปโหลดรูปหน้าสำหรับสร้างวิดีโอ จะแสดงที่นี่
+        <div class="he-hint">ไปหน้า "สร้างวิดีโอ" แล้วอัปโหลดรูปได้เลย</div>
+        <a class="he-action" onclick="go('create')">ไปอัปโหลดรูป</a>
+      </div>
     </div>
 
     <!-- PAGE: PRESETS MANAGER -->
@@ -561,7 +631,10 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
       </div>
       <div class="card-h">Preset ที่สร้าง</div>
       <div id="cpList"></div>
-      <div class="he" id="cpEmpty" style="padding:30px;">ยังไม่มี preset ที่สร้างเอง</div>
+      <div class="he" id="cpEmpty" style="padding:30px;">
+        <div class="he-title">ยังไม่มี preset ที่สร้างเอง</div>
+        สร้าง preset จากค่าที่ใช้บ่อยไว้ด้านบน จะได้เลือกใช้ซ้ำได้ทันที
+      </div>
     </div>
 
     <!-- PAGE: GUIDE -->
@@ -733,6 +806,9 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
   </div>
 </div></div>
 
+<!-- Toast + Snackbar containers -->
+<div class="toast-container" id="toastBox"></div>
+
 <script>
 const Q=s=>document.querySelector(s), $=id=>document.getElementById(id);
 
@@ -807,15 +883,64 @@ const api={
   invalidate(prefix){for(const k of apiCache.keys())if(k.startsWith(prefix))apiCache.delete(k);}
 };
 
-/* ── Centralized Error Logger — structured console + UI toast ── */
+/* ── Toast notifications (replaces alert()) ── */
+function toast(msg,type='info',duration=4000){
+  const t=document.createElement('div');
+  t.className='toast '+type;t.textContent=msg;
+  $('toastBox').appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},duration);
+}
+
+/* ── Undo snackbar (replaces confirm() for destructive actions) ── */
+function undoSnack(msg,onConfirm,sec=7){
+  return new Promise(resolve=>{
+    // Remove any existing snackbar
+    document.querySelectorAll('.snackbar').forEach(s=>s.remove());
+    const s=document.createElement('div');
+    s.className='snackbar';s.style.setProperty('--undo-time',sec+'s');
+    s.innerHTML=`<span>${msg}</span><button>เลิกทำ</button><div class="timer"><div class="timer-fill"></div></div>`;
+    document.body.appendChild(s);
+    let done=false;
+    const finish=(undone)=>{if(done)return;done=true;s.remove();resolve(!undone);};
+    s.querySelector('button').onclick=()=>finish(true);
+    setTimeout(()=>finish(false),sec*1000);
+  });
+}
+
+/* ── Skeleton loaders ── */
+function showSkeleton(container,count=3,type='card'){
+  container.innerHTML='';
+  for(let i=0;i<count;i++){
+    const d=document.createElement('div');
+    if(type==='card'){d.className='skel skel-card';d.style.borderRadius='12px';}
+    else{d.className='skel skel-row';}
+    container.appendChild(d);
+  }
+}
+
+/* ── Centralized Error Logger — friendly messages, never raw errors ── */
+const ERR_MAP={
+  'Failed to fetch':'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบการเชื่อมต่อ',
+  'Unauthorized':'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่',
+  'Too many requests':'คำขอถี่เกินไป กรุณารอสักครู่แล้วลองใหม่',
+  'Timeout':'ใช้เวลานานเกินไป กรุณาลองอีกครั้งด้วยข้อความสั้นลง หรือรูปขนาดเล็กลง',
+};
 const errLog={
   handle(context,error){
-    const entry={ts:new Date().toISOString(),context,message:String(error),stack:error?.stack?.split('\\n')[1]?.trim()};
+    const raw=String(error?.message||error);
+    const entry={ts:new Date().toISOString(),context,message:raw};
     console.error('[SadTalker]',JSON.stringify(entry));
-    // Show to user
-    if($('ebox')){$('ebox').style.display='block';$('ebox').textContent=entry.message;}
+    // Map technical errors to friendly Thai messages
+    const friendly=ERR_MAP[raw]||raw.replace(/^Error:\s*/,'');
+    return friendly;
   }
 };
+
+/* ── Friendly error display (never raw tech errors) ── */
+function showFriendlyError(msg){
+  $('ebox').style.display='block';
+  $('ebox-msg').textContent=msg;
+}
 
 /* ── Theme ── */
 function getTheme(){return localStorage.getItem('theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');}
@@ -936,11 +1061,11 @@ function onAud(){
 /* ── Generate ── */
 async function generate(){
   // RBAC client-side guard
-  if(!hasPerm('generate')){alert('ไม่มีสิทธิ์สร้างวิดีโอ');return;}
+  if(!hasPerm('generate')){toast('บัญชีนี้ไม่มีสิทธิ์สร้างวิดีโอ ติดต่อผู้ดูแลระบบ','warn');return;}
   const mode=$('aMode').value,txt=$('text').value.trim();
-  if(mode==='tts'&&!txt){alert('กรุณาพิมพ์ข้อความ');return;}
-  if(mode==='file'&&!upAud){alert('กรุณาอัปโหลดเสียง');return;}
-  if(!selImg&&!upImg){alert('กรุณาเลือกรูป');return;}
+  if(mode==='tts'&&!txt){toast('พิมพ์ข้อความที่ต้องการให้พูดก่อนนะ','warn');return;}
+  if(mode==='file'&&!upAud){toast('อัปโหลดไฟล์เสียงก่อนนะ','warn');return;}
+  if(!selImg&&!upImg){toast('เลือกรูปหน้าก่อน โดยอัปโหลดหรือเลือกจากตัวอย่าง','warn');return;}
   trackEvent('generate_click',{preset,mode});
 
   $('goBtn').disabled=true;$('goBtn').textContent='กำลังสร้าง...';
@@ -962,7 +1087,7 @@ async function generate(){
   try{
     const d=await api.post('/api/generate',fd);
     doPoll(d.job_id);
-  }catch(e){errLog.handle('generate',e);err(e.message);}
+  }catch(e){const m=errLog.handle('generate',e);showFriendlyError(m);rst();}
 }
 
 const STP={starting:'เริ่มต้น...',tts:'แปลงข้อความเป็นเสียง...',inference:'กำลัง render (5-10 นาที)...'};
@@ -997,7 +1122,7 @@ function rst(){
   $('goBtn').disabled=false;$('goBtn').textContent='Generate';
   $('badge').textContent='พร้อมใช้งาน';$('badge').style.background='';$('badge').style.color='';
 }
-function err(m){$('ovProg').classList.remove('show');$('ebox').style.display='block';$('ebox').textContent=m;rst();if(poll)clearInterval(poll);}
+function err(m){$('ovProg').classList.remove('show');showFriendlyError(ERR_MAP[m]||m);rst();if(poll)clearInterval(poll);}
 function closeRes(){$('ovRes').classList.remove('show');$('text').value='';}
 
 /* ── Helpers ── */
@@ -1005,6 +1130,9 @@ function esc(s){const d=document.createElement('div');d.textContent=s;return d.i
 
 /* ── History ── */
 async function loadH(){
+  const g=$('hGrid');
+  showSkeleton(g,3,'card');
+  $('hEmpty').style.display='none';
   let items;
   try{items=await api.get('/api/history');}catch(e){errLog.handle('loadHistory',e);items=[];}
   const g=$('hGrid');g.innerHTML='';
@@ -1028,18 +1156,25 @@ async function renH(fn){
   const n=prompt('ตั้งชื่อใหม่:',fn);
   if(!n||n===fn)return;
   const fd=new FormData();fd.append('new_name',n);
-  try{await api.send('PATCH','/api/history/'+encodeURIComponent(fn),fd);api.invalidate('/api/history');loadH();}
-  catch(e){errLog.handle('renameVideo',e);alert(e.message);}
+  try{await api.send('PATCH','/api/history/'+encodeURIComponent(fn),fd);api.invalidate('/api/history');toast('เปลี่ยนชื่อแล้ว','success');loadH();}
+  catch(e){toast(errLog.handle('renameVideo',e),'error');}
 }
 async function delH(fn,b){
-  if(!confirm('ลบวิดีโอนี้?'))return;
-  try{await api.send('DELETE','/api/history/'+encodeURIComponent(fn));}catch(e){errLog.handle('deleteVideo',e);return;}
-  b.closest('.hi').remove();
-  if(!$('hGrid').children.length)$('hEmpty').style.display='block';
+  // Optimistic UI: hide immediately, undo snackbar for 7 seconds
+  const item=b.closest('.hi');
+  item.style.opacity='0.3';item.style.pointerEvents='none';
+  const confirmed=await undoSnack('ลบวิดีโอแล้ว');
+  if(!confirmed){item.style.opacity='1';item.style.pointerEvents='';return;}
+  try{await api.send('DELETE','/api/history/'+encodeURIComponent(fn));item.remove();
+    if(!$('hGrid').children.length)$('hEmpty').style.display='block';
+  }catch(e){item.style.opacity='1';item.style.pointerEvents='';toast(errLog.handle('deleteVideo',e),'error');}
 }
 
 /* ── Uploads ── */
 async function loadUploads(){
+  const g=$('uGrid');
+  showSkeleton(g,3,'card');
+  $('uEmpty').style.display='none';
   let items;
   try{items=await api.get('/api/uploads');}catch(e){errLog.handle('loadUploads',e);items=[];}
   const g=$('uGrid');g.innerHTML='';
@@ -1058,10 +1193,13 @@ async function loadUploads(){
 }
 function useUpload(fn,url){selI(fn,url);go('create');}
 async function delUpload(fn,b){
-  if(!confirm('ลบรูปนี้?'))return;
-  try{await api.send('DELETE','/api/uploads/'+encodeURIComponent(fn));}catch(e){errLog.handle('deleteUpload',e);return;}
-  b.closest('.hi').remove();
-  if(!$('uGrid').children.length)$('uEmpty').style.display='block';
+  const item=b.closest('.hi');
+  item.style.opacity='0.3';item.style.pointerEvents='none';
+  const confirmed=await undoSnack('ลบรูปแล้ว');
+  if(!confirmed){item.style.opacity='1';item.style.pointerEvents='';return;}
+  try{await api.send('DELETE','/api/uploads/'+encodeURIComponent(fn));item.remove();
+    if(!$('uGrid').children.length)$('uEmpty').style.display='block';
+  }catch(e){item.style.opacity='1';item.style.pointerEvents='';toast(errLog.handle('deleteUpload',e),'error');}
 }
 
 /* ── Custom Presets ── */
@@ -1083,21 +1221,22 @@ async function loadCustomPresets(){
 }
 async function createPreset(){
   const key=$('cpKey').value.trim(),label=$('cpLabel').value.trim();
-  if(!key||!label){alert('กรุณากรอกชื่อ key และชื่อแสดง');return;}
+  if(!key||!label){toast('กรอกชื่อ key และชื่อแสดงก่อนนะ','warn');return;}
   const fd=new FormData();
   fd.append('key',key);fd.append('label',label);fd.append('desc',$('cpDesc').value);
   fd.append('preprocess',$('cpPreproc').value);fd.append('enhancer',$('cpEnh').value);
   fd.append('expression_scale',$('cpExpr').value);
   fd.append('still',$('cpStill').classList.contains('on')?'true':'false');
   try{await api.post('/api/custom-presets',fd);api.invalidate('/api/presets');api.invalidate('/api/custom');
-    $('cpKey').value='';$('cpLabel').value='';$('cpDesc').value='';loadCustomPresets();alert('บันทึกแล้ว');
-  }catch(e){errLog.handle('createPreset',e);alert(e.message);}
+    $('cpKey').value='';$('cpLabel').value='';$('cpDesc').value='';loadCustomPresets();toast('บันทึก preset แล้ว!','success');
+  }catch(e){toast(errLog.handle('createPreset',e),'error');}
 }
 function usePreset(k){pick(k);go('create');}
 async function delPreset(k){
-  if(!confirm('ลบ preset นี้?'))return;
+  const confirmed=await undoSnack('ลบ preset แล้ว');
+  if(!confirmed)return;
   try{await api.send('DELETE','/api/custom-presets/'+encodeURIComponent(k));api.invalidate('/api/presets');api.invalidate('/api/custom');}
-  catch(e){errLog.handle('deletePreset',e);}
+  catch(e){toast(errLog.handle('deletePreset',e),'error');}
   loadCustomPresets();
 }
 

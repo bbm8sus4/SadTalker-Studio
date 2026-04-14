@@ -286,8 +286,29 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         if flags.get("maintenance_mode") and session.get("role") != "admin":
             if path.startswith("/api/"):
-                return JSONResponse({"detail": "ระบบอยู่ระหว่างบำรุงรักษา"}, 503)
-            return HTMLResponse("<h2>ระบบอยู่ระหว่างบำรุงรักษา</h2>", 503)
+                return JSONResponse({"detail": "ระบบอยู่ระหว่างบำรุงรักษา กรุณารอสักครู่"}, 503)
+            eta = flags.get("maintenance_eta", "เร็วๆ นี้")
+            contact = flags.get("maintenance_contact", "")
+            return HTMLResponse(f"""<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>SadTalker Studio — บำรุงรักษา</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600&display=swap" rel="stylesheet">
+<style>*{{margin:0;padding:0;box-sizing:border-box;}}body{{font-family:'Noto Sans Thai',system-ui,sans-serif;
+background:#F7F8FA;color:#1D1D1F;display:flex;justify-content:center;align-items:center;height:100vh;text-align:center;padding:24px;}}
+.card{{max-width:440px;}}.icon{{font-size:3rem;margin-bottom:16px;}}
+h1{{font-size:1.3rem;margin-bottom:8px;}}p{{color:#6E6E73;font-size:.92rem;line-height:1.7;margin-bottom:8px;}}
+.eta{{display:inline-block;margin-top:12px;padding:6px 16px;border-radius:8px;background:#EEF0FD;color:#4361EE;font-weight:600;font-size:.88rem;}}
+.contact{{margin-top:16px;font-size:.82rem;color:#AEAEB2;}}</style></head><body>
+<div class="card">
+<div class="icon">&#128736;</div>
+<h1>ระบบอยู่ระหว่างบำรุงรักษา</h1>
+<p>เรากำลังปรับปรุงระบบให้ดีขึ้น ขออภัยในความไม่สะดวก</p>
+<div class="eta">คาดว่าจะกลับมาใช้ได้: {eta}</div>
+{"<p class='contact'>ติดต่อ: " + contact + "</p>" if contact else ""}
+<p style="margin-top:20px;font-size:.78rem;color:#AEAEB2;">ระบบจะรีเฟรชอัตโนมัติเมื่อพร้อม</p>
+</div>
+<script>setInterval(()=>fetch('/api/flags').then(r=>r.json()).then(f=>{{if(!f.maintenance_mode)location.reload();}}).catch(()=>{{}}),30000);</script>
+</body></html>""", 503)
 
         request.state.user = session.get("user", "")
         request.state.role = session.get("role", "viewer")
