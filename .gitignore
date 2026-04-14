@@ -172,3 +172,11 @@ checkpoints
 
 # Mac
 .DS_Store
+
+# SadTalker Studio
+output.mp4
+outputs/
+uploads/
+temp_audio*.mp3
+test_audio.mp3
+venv/

@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="th" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
+<title>SadTalker Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════
+   THEME TOKENS
+   ═══════════════════════════════════════════ */
+:root,
+[data-theme="light"]{
+  --bg:     #F5F5F7;
+  --bg2:    #EEEEF0;
+  --surface:#FFFFFF;
+  --border: #E2E2E6;
+  --text:   #1D1D1F;
+  --text2:  #6E6E73;
+  --muted:  #AEAEB2;
+  --accent: #0071E3;
+  --accent-h:#0062CC;
+  --accent-s:rgba(0,113,227,.08);
+  --green:  #30D158;
+  --green-s:rgba(48,209,88,.1);
+  --red:    #FF453A;
+  --red-s:  rgba(255,69,58,.1);
+  --shadow: 0 1px 4px rgba(0,0,0,.04);
+  --glass:  rgba(255,255,255,.7);
+}
+[data-theme="dark"]{
+  --bg:     #000000;
+  --bg2:    #1C1C1E;
+  --surface:#2C2C2E;
+  --border: #38383A;
+  --text:   #F5F5F7;
+  --text2:  #A1A1A6;
+  --muted:  #636366;
+  --accent: #0A84FF;
+  --accent-h:#409CFF;
+  --accent-s:rgba(10,132,255,.15);
+  --green:  #30D158;
+  --green-s:rgba(48,209,88,.15);
+  --red:    #FF453A;
+  --red-s:  rgba(255,69,58,.15);
+  --shadow: 0 1px 4px rgba(0,0,0,.3);
+  --glass:  rgba(44,44,46,.85);
+}
+
+/* ═══════════════════════════════════════════
+   RESET & BASE
+   ═══════════════════════════════════════════ */
+*{margin:0;padding:0;box-sizing:border-box;}
+html{font-size:15px;height:100%;}
+body{
+  font-family:'Noto Sans Thai',system-ui,-apple-system,sans-serif;
+  background:var(--bg);color:var(--text);line-height:1.6;
+  height:100%;overflow:hidden;
+  transition:background .3s,color .3s;
+}
+
+/* ═══════════════════════════════════════════
+   LAYOUT — Sidebar + Main
+   ═══════════════════════════════════════════ */
+.layout{display:flex;height:100%;}
+
+/* ── Sidebar ── */
+.sidebar{
+  width:220px;min-width:220px;height:100%;
+  background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow-y:auto;
+  transition:background .3s,border .3s;
+}
+.sb-head{
+  padding:20px 20px 16px;display:flex;align-items:center;gap:10px;
+}
+.sb-logo{
+  width:32px;height:32px;border-radius:8px;background:var(--accent);
+  display:grid;place-items:center;color:#fff;font-weight:700;font-size:.8rem;flex-shrink:0;
+}
+.sb-title{font-weight:700;font-size:.95rem;}
+
+.sb-label{
+  padding:20px 20px 6px;font-size:.65rem;text-transform:uppercase;
+  letter-spacing:1.5px;color:var(--muted);font-weight:600;
+}
+.sb-menu{list-style:none;padding:0 8px;}
+.sb-menu li{
+  display:flex;align-items:center;gap:10px;padding:8px 14px;border-radius:8px;
+  cursor:pointer;font-size:.87rem;color:var(--text2);transition:.15s;margin:1px 0;
+  font-weight:400;
+}
+.sb-menu li:hover{background:var(--bg2);}
+.sb-menu li.on{background:var(--accent-s);color:var(--accent);font-weight:600;}
+.sb-menu li svg{width:18px;height:18px;flex-shrink:0;stroke-width:1.7;}
+
+/* Theme toggle in sidebar */
+.sb-bottom{margin-top:auto;padding:16px 20px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.theme-btn{
+  display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;
+  border:1px solid var(--border);background:transparent;color:var(--text2);
+  font-size:.8rem;cursor:pointer;font-family:inherit;transition:.15s;
+}
+.theme-btn:hover{background:var(--bg2);}
+.theme-btn svg{width:16px;height:16px;}
+.sb-ver{font-size:.68rem;color:var(--muted);}
+
+/* ── Main ── */
+.main-wrap{flex:1;display:flex;flex-direction:column;min-width:0;height:100%;}
+
+/* Topbar */
+.topbar{
+  height:52px;min-height:52px;padding:0 28px;
+  display:flex;align-items:center;justify-content:space-between;
+  border-bottom:1px solid var(--border);background:var(--surface);
+  transition:background .3s,border .3s;flex-shrink:0;
+}
+.topbar h1{font-size:.95rem;font-weight:600;}
+.badge{
+  padding:4px 12px;border-radius:16px;font-size:.72rem;font-weight:600;
+  background:var(--accent-s);color:var(--accent);
+}
+
+/* Content */
+.content{flex:1;overflow-y:auto;padding:24px 28px 24px;}
+
+/* Bottom bar */
+.bottom{
+  height:64px;min-height:64px;flex-shrink:0;padding:0 24px;
+  background:var(--surface);border-top:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;
+  transition:background .3s,border .3s;
+}
+.bb-wrap{
+  flex:1;display:flex;align-items:center;
+  background:var(--bg2);border:1px solid var(--border);border-radius:22px;
+  padding:0 4px 0 16px;height:40px;transition:border .2s,box-shadow .2s;
+}
+.bb-wrap:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-s);}
+.bb-wrap input{
+  flex:1;border:none;background:transparent;outline:none;
+  font-size:.88rem;color:var(--text);font-family:inherit;height:100%;
+}
+.bb-wrap input::placeholder{color:var(--muted);}
+.bb-pill{
+  height:32px;padding:0 10px;border-radius:8px;border:1px solid var(--border);
+  background:var(--surface);color:var(--text2);font-size:.76rem;font-family:inherit;
+  cursor:pointer;outline:none;transition:.15s;
+}
+.bb-pill:focus{border-color:var(--accent);}
+.btn-go{
+  height:40px;padding:0 24px;border:none;border-radius:20px;
+  background:var(--accent);color:#fff;font-weight:600;font-size:.88rem;
+  cursor:pointer;display:flex;align-items:center;gap:6px;
+  white-space:nowrap;font-family:inherit;transition:.15s;min-width:120px;justify-content:center;
+}
+.btn-go:hover{background:var(--accent-h);}
+.btn-go:disabled{opacity:.4;cursor:not-allowed;}
+
+/* ═══════════════════════════════════════════
+   PAGES
+   ═══════════════════════════════════════════ */
+.pg{display:none;}.pg.on{display:block;}
+
+/* Preset chips */
+.presets{display:flex;align-items:center;gap:6px;margin-bottom:24px;flex-wrap:wrap;}
+.presets .lbl{font-size:.78rem;color:var(--muted);margin-right:2px;}
+.chip{
+  padding:5px 14px;border-radius:18px;border:1.5px solid var(--border);
+  font-size:.8rem;cursor:pointer;background:transparent;color:var(--text2);
+  font-weight:500;transition:.15s;font-family:inherit;
+}
+.chip:hover{border-color:var(--accent);color:var(--accent);}
+.chip.on{background:var(--accent);color:#fff;border-color:var(--accent);}
+
+/* Grid */
+.gr{display:grid;gap:20px;}
+.gr-2{grid-template-columns:1.15fr 1fr;}
+.gr-3{grid-template-columns:1fr 1fr 1fr;}
+.gr-2e{grid-template-columns:1fr 1fr;}
+
+/* Card */
+.card{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:20px;box-shadow:var(--shadow);transition:background .3s,border .3s;
+}
+.card+.card{margin-top:14px;}
+.card-h{font-size:.68rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px;font-weight:600;}
+
+/* Form */
+.fl{display:block;font-size:.76rem;color:var(--text2);margin-bottom:4px;font-weight:500;}
+.fi,.fs{
+  width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--border);
+  background:var(--surface);color:var(--text);font-size:.86rem;font-family:inherit;
+  transition:.15s;
+}
+.fi:focus,.fs:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-s);}
+.fs{cursor:pointer;}
+.fg{margin-bottom:12px;}.fg:last-child{margin-bottom:0;}
+
+/* Toggle */
+.trow{display:flex;align-items:center;justify-content:space-between;padding:6px 0;}
+.trow span{font-size:.86rem;}
+.tg{
+  width:40px;height:22px;border-radius:11px;cursor:pointer;position:relative;
+  background:var(--muted);transition:.25s;flex-shrink:0;
+}
+.tg.on{background:var(--accent);}
+.tg::after{
+  content:'';position:absolute;width:18px;height:18px;border-radius:50%;
+  background:#fff;top:2px;left:2px;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.15);
+}
+.tg.on::after{left:20px;}
+
+/* Slider */
+.sr{margin-bottom:10px;}
+.sr-h{display:flex;justify-content:space-between;font-size:.78rem;color:var(--text2);margin-bottom:2px;}
+.sr-h b{color:var(--accent);font-weight:700;}
+input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:pointer;}
+
+/* Image grid */
+.ig{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));
+  gap:6px;max-height:240px;overflow-y:auto;padding:2px;
+}
+.ig img{
+  width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;cursor:pointer;
+  border:2px solid transparent;transition:.12s;opacity:.85;
+}
+.ig img:hover{opacity:1;border-color:var(--accent);}
+.ig img.on{opacity:1;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-s);}
+
+/* Upload */
+.uzone{
+  border:1.5px dashed var(--border);border-radius:10px;padding:20px;
+  text-align:center;cursor:pointer;color:var(--muted);font-size:.86rem;transition:.15s;
+}
+.uzone:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-s);}
+.uzone.ok{border-color:var(--green);color:var(--green);background:var(--green-s);}
+.uzone input{display:none;}
+
+.pbox{text-align:center;margin-top:12px;}
+.pbox img{max-height:180px;border-radius:10px;border:1px solid var(--border);}
+
+/* Buttons */
+.btn{
+  padding:8px 16px;border-radius:8px;border:none;font-size:.8rem;font-weight:600;
+  cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-family:inherit;transition:.12s;
+}
+.btn-g{background:var(--green);color:#fff;}.btn-g:hover{filter:brightness(1.1);}
+.btn-o{background:transparent;border:1px solid var(--border);color:var(--text2);}.btn-o:hover{background:var(--bg2);}
+.btn-r{background:var(--red-s);color:var(--red);}.btn-r:hover{filter:brightness(.95);}
+.btn-sm{padding:5px 12px;font-size:.74rem;}
+
+/* Link */
+.alink{
+  display:inline-flex;align-items:center;gap:4px;
+  color:var(--accent);font-size:.8rem;cursor:pointer;font-weight:500;margin-top:6px;
+}
+.alink:hover{text-decoration:underline;}
+
+/* ═══════════════════════════════════════════
+   OVERLAYS
+   ═══════════════════════════════════════════ */
+.ov{
+  display:none;position:fixed;inset:0;z-index:600;
+  background:var(--glass);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  justify-content:center;align-items:center;padding:24px;
+}
+.ov.show{display:flex;}
+.ocard{
+  background:var(--surface);border:1px solid var(--border);border-radius:16px;
+  padding:32px 40px;text-align:center;box-shadow:0 16px 64px rgba(0,0,0,.12);
+  max-width:460px;width:100%;transition:background .3s,border .3s;
+}
+.ocard h3{margin-bottom:8px;font-size:1.05rem;font-weight:600;}
+.o-pct{font-size:2.2rem;font-weight:700;color:var(--accent);margin:12px 0 6px;}
+.o-bar{background:var(--bg2);border-radius:5px;overflow:hidden;height:6px;margin-bottom:10px;}
+.o-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--green));width:0%;transition:width .5s;border-radius:5px;}
+.o-step{font-size:.84rem;color:var(--text2);}
+.ocard video{width:100%;border-radius:10px;margin-bottom:14px;}
+.ocard .acts{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+
+/* Error */
+.ebox{
+  display:none;padding:10px 16px;border-radius:10px;font-size:.84rem;margin-top:14px;
+  background:var(--red-s);color:var(--red);
+}
+
+/* ═══════════════════════════════════════════
+   HISTORY
+   ═══════════════════════════════════════════ */
+.hg{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;}
+.hi{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  overflow:hidden;box-shadow:var(--shadow);transition:box-shadow .15s,background .3s;
+}
+.hi:hover{box-shadow:0 4px 20px rgba(0,0,0,.08);}
+.hi video{width:100%;aspect-ratio:16/9;object-fit:cover;background:var(--bg2);cursor:pointer;display:block;}
+.hi .meta{padding:12px 14px;}
+.hi .t{font-weight:600;font-size:.85rem;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hi .d{font-size:.72rem;color:var(--muted);margin-bottom:8px;}
+.hi .a{display:flex;gap:6px;}
+.he{text-align:center;padding:60px;color:var(--muted);font-size:.9rem;}
+
+/* ═══════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════ */
+@media(max-width:800px){
+  .sidebar{display:none;}
+  .bottom .bb-pill{display:none;}
+  .gr-2,.gr-3,.gr-2e{grid-template-columns:1fr;}
+  .content{padding:16px;}
+  .topbar{padding:0 16px;}
+  .bottom{padding:0 12px;gap:8px;}
+  .btn-go{min-width:auto;padding:0 16px;}
+  .hg{grid-template-columns:1fr;}
+  .ig{grid-template-columns:repeat(auto-fill,minmax(58px,1fr));}
+  .ocard{padding:24px 20px;}
+}
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+<!-- ════════ SIDEBAR ════════ -->
+<aside class="sidebar">
+  <div class="sb-head">
+    <div class="sb-logo">ST</div>
+    <div class="sb-title">SadTalker</div>
+  </div>
+
+  <div class="sb-label">สร้าง</div>
+  <ul class="sb-menu">
+    <li class="on" onclick="go('create')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16"/></svg>
+      สร้างวิดีโอ
+    </li>
+    <li onclick="go('settings')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+      ตั้งค่า
+    </li>
+  </ul>
+
+  <div class="sb-label">ไฟล์</div>
+  <ul class="sb-menu">
+    <li onclick="go('history')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="10"/></svg>
+      ประวัติ
+    </li>
+  </ul>
+
+  <div class="sb-label">พรีเซ็ต</div>
+  <ul class="sb-menu" id="sbPresets"></ul>
+
+  <div class="sb-bottom">
+    <span class="sb-ver">v1.0</span>
+    <button class="theme-btn" onclick="toggleTheme()">
+      <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      <span id="themeLbl">Dark</span>
+    </button>
+  </div>
+</aside>
+
+<!-- ════════ MAIN ════════ -->
+<div class="main-wrap">
+
+  <div class="topbar">
+    <h1 id="pageTitle">สร้างวิดีโอ</h1>
+    <div class="badge" id="badge">พร้อมใช้งาน</div>
+  </div>
+
+  <div class="content">
+
+    <!-- PAGE: CREATE -->
+    <div class="pg on" id="pg-create">
+      <div class="presets">
+        <span class="lbl">Preset</span>
+        <div id="chips"></div>
+      </div>
+
+      <div class="gr gr-2">
+        <!-- Col 1 — Image -->
+        <div>
+          <div class="card">
+            <div class="card-h">รูปภาพ</div>
+            <div class="uzone" id="imgUp" onclick="Q('#imgIn').click()">
+              คลิกอัปโหลดรูปหน้า
+              <input type="file" id="imgIn" accept="image/*" onchange="onImg()">
+            </div>
+            <div style="margin-top:14px;">
+              <label class="fl">เลือกจากตัวอย่าง</label>
+              <div class="ig" id="igrid"></div>
+            </div>
+            <div class="pbox" id="imgP"></div>
+          </div>
+        </div>
+
+        <!-- Col 2 — Voice -->
+        <div>
+          <div class="card">
+            <div class="card-h">เสียง</div>
+            <div class="fg">
+              <label class="fl">แหล่งเสียง</label>
+              <select class="fs" id="aMode" onchange="togAudio()">
+                <option value="tts">พิมพ์ข้อความ (TTS)</option>
+                <option value="file">อัปโหลดไฟล์เสียง</option>
+              </select>
+            </div>
+            <div id="secTTS">
+              <div class="fg">
+                <label class="fl">เสียงพูด</label>
+                <select class="fs" id="voice"></select>
+              </div>
+              <div class="gr gr-2e">
+                <div class="fg">
+                  <label class="fl">ความเร็ว</label>
+                  <select class="fs" id="rate">
+                    <option value="-30%">ช้ามาก</option><option value="-15%">ช้า</option>
+                    <option value="+0%" selected>ปกติ</option><option value="+15%">เร็ว</option>
+                    <option value="+30%">เร็วมาก</option>
+                  </select>
+                </div>
+                <div class="fg">
+                  <label class="fl">ระดับเสียง</label>
+                  <select class="fs" id="pitch">
+                    <option value="-20Hz">ต่ำ</option><option value="-10Hz">ค่อนข้างต่ำ</option>
+                    <option value="+0Hz" selected>ปกติ</option><option value="+10Hz">ค่อนข้างสูง</option>
+                    <option value="+20Hz">สูง</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div id="secFile" style="display:none;">
+              <div class="uzone" id="audUp" onclick="Q('#audIn').click()">
+                อัปโหลดเสียง (.mp3 / .wav)
+                <input type="file" id="audIn" accept="audio/*" onchange="onAud()">
+              </div>
+              <div id="audP" style="margin-top:6px;"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">ชื่อไฟล์ (ไม่บังคับ)</div>
+            <input class="fi" type="text" id="outName" placeholder="เช่น promo.mp4">
+          </div>
+
+          <div class="alink" onclick="go('settings')">ตั้งค่าขั้นสูง &rarr;</div>
+        </div>
+      </div>
+      <div class="ebox" id="ebox"></div>
+    </div>
+
+    <!-- PAGE: SETTINGS -->
+    <div class="pg" id="pg-settings">
+      <div class="card">
+        <div class="card-h">Animation</div>
+        <div class="sr">
+          <div class="sr-h"><span>Expression Scale</span><b id="exV">1.0</b></div>
+          <input type="range" id="expr" min="0.5" max="2.0" step="0.1" value="1.0" oninput="Q('#exV').textContent=this.value">
+        </div>
+        <div class="sr">
+          <div class="sr-h"><span>Pose Style (0-45)</span><b id="psV">0</b></div>
+          <input type="range" id="pose" min="0" max="45" step="1" value="0" oninput="Q('#psV').textContent=this.value">
+        </div>
+        <div class="trow">
+          <span>Still Mode (หัวนิ่ง ขยับแค่ปาก/ตา)</span>
+          <div class="tg on" id="still" onclick="this.classList.toggle('on')"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h">Quality</div>
+        <div class="gr gr-3">
+          <div class="fg"><label class="fl">Preprocess</label>
+            <select class="fs" id="preproc"><option value="">ตาม Preset</option><option value="crop">crop</option><option value="extcrop">extcrop</option><option value="resize">resize</option><option value="full">full</option><option value="extfull">extfull</option></select>
+          </div>
+          <div class="fg"><label class="fl">Face Enhancer</label>
+            <select class="fs" id="enh"><option value="">ตาม Preset</option><option value="gfpgan">GFPGAN</option><option value="RestoreFormer">RestoreFormer</option><option value="none">ไม่ใช้</option></select>
+          </div>
+          <div class="fg"><label class="fl">BG Enhancer</label>
+            <select class="fs" id="bgE"><option value="none">ไม่ใช้</option><option value="realesrgan">RealESRGAN</option></select>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h">หมุนหัว (ไม่บังคับ)</div>
+        <div class="gr gr-3">
+          <div class="fg"><label class="fl">Yaw</label><input class="fi" id="yaw" placeholder="-20 0 20"></div>
+          <div class="fg"><label class="fl">Pitch</label><input class="fi" id="pit" placeholder="-10 10"></div>
+          <div class="fg"><label class="fl">Roll</label><input class="fi" id="rol" placeholder="-5 5"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: HISTORY -->
+    <div class="pg" id="pg-history">
+      <div class="hg" id="hGrid"></div>
+      <div class="he" id="hEmpty">ยังไม่มีวิดีโอ</div>
+    </div>
+
+  </div><!-- /content -->
+
+  <!-- Bottom bar -->
+  <div class="bottom">
+    <div class="bb-wrap">
+      <input type="text" id="text" placeholder="พิมพ์ข้อความที่ต้องการให้พูด...">
+    </div>
+    <select class="bb-pill" id="vChip"></select>
+    <select class="bb-pill" id="pChip">
+      <option value="draft">Draft</option><option value="standard" selected>มาตรฐาน</option>
+      <option value="hq">คุณภาพสูง</option><option value="marketing">การตลาด</option>
+    </select>
+    <button class="btn-go" id="goBtn" onclick="generate()">Generate</button>
+  </div>
+</div><!-- /main-wrap -->
+</div><!-- /layout -->
+
+<!-- OVERLAYS -->
+<div class="ov" id="ovProg"><div class="ocard">
+  <h3>กำลังสร้างวิดีโอ</h3>
+  <div class="o-pct" id="oPct">0%</div>
+  <div class="o-bar"><div class="o-fill" id="oFill"></div></div>
+  <div class="o-step" id="oStep">เริ่มต้น...</div>
+</div></div>
+
+<div class="ov" id="ovRes"><div class="ocard">
+  <h3 style="color:var(--green);">สำเร็จ!</h3>
+  <video id="rVid" controls autoplay></video>
+  <div class="acts">
+    <a class="btn btn-g" id="dlBtn" download>ดาวน์โหลด</a>
+    <button class="btn btn-o" onclick="closeRes()">สร้างใหม่</button>
+  </div>
+</div></div>
+
+<script>
+const Q=s=>document.querySelector(s), $=id=>document.getElementById(id);
+
+/* ── Theme ── */
+function getTheme(){return localStorage.getItem('theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');}
+function applyTheme(t){
+  document.documentElement.dataset.theme=t;
+  $('themeLbl').textContent=t==='dark'?'Light':'Dark';
+  $('themeIcon').innerHTML=t==='dark'
+    ?'<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>'
+    :'<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+}
+function toggleTheme(){const t=getTheme()==='dark'?'light':'dark';localStorage.setItem('theme',t);applyTheme(t);}
+applyTheme(getTheme());
+
+/* ── State ── */
+let preset='standard',selImg='',upImg=null,upAud=null,poll=null;
+
+/* ── Init ── */
+async function init(){
+  const vc=await(await fetch('/api/voices')).json();
+  const v1=$('voice'),v2=$('vChip');
+  for(const[id,lb] of Object.entries(vc)){
+    const o=new Option(lb,id,id.includes('Premwadee'),id.includes('Premwadee'));
+    v1.add(o);v2.add(o.cloneNode(true));
+  }
+  v2.onchange=()=>v1.value=v2.value;
+
+  const pr=await(await fetch('/api/presets')).json();
+  const ch=$('chips'),sb=$('sbPresets');
+  for(const[k,p] of Object.entries(pr)){
+    const c=document.createElement('button');
+    c.className='chip'+(k===preset?' on':'');c.dataset.k=k;c.textContent=p.label;
+    c.onclick=()=>pick(k);ch.appendChild(c);
+    const li=document.createElement('li');li.dataset.k=k;li.textContent=p.label;
+    li.onclick=()=>{pick(k);go('create');};sb.appendChild(li);
+  }
+
+  const imgs=await(await fetch('/api/examples')).json();
+  const ig=$('igrid');
+  for(const i of imgs){
+    const el=document.createElement('img');
+    el.src=i.url;el.title=i.name;el.dataset.f=i.filename;el.loading='lazy';
+    el.onclick=()=>selI(i.filename,i.url);ig.appendChild(el);
+  }
+
+  $('pChip').onchange=function(){pick(this.value);};
+  $('text').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();generate();}});
+  loadH();
+}
+
+/* ── Nav ── */
+const titles={create:'สร้างวิดีโอ',settings:'ตั้งค่า',history:'ประวัติ'};
+function go(p){
+  document.querySelectorAll('.pg').forEach(x=>x.classList.remove('on'));
+  $('pg-'+p).classList.add('on');
+  $('pageTitle').textContent=titles[p]||p;
+  document.querySelectorAll('.sb-menu li').forEach(li=>{
+    li.classList.remove('on');
+    const t=li.textContent.trim();
+    if((p==='create'&&t==='สร้างวิดีโอ')||(p==='settings'&&t==='ตั้งค่า')||(p==='history'&&t==='ประวัติ'))li.classList.add('on');
+  });
+  if(p==='history')loadH();
+}
+function pick(k){
+  preset=k;
+  document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',c.dataset.k===k));
+  $('pChip').value=k;
+}
+function selI(fn,url){
+  selImg=fn;upImg=null;$('imgIn').value='';
+  $('imgUp').classList.remove('ok');
+  $('imgUp').innerHTML='คลิกอัปโหลดรูปหน้า<input type="file" id="imgIn" accept="image/*" onchange="onImg()">';
+  document.querySelectorAll('.ig img').forEach(i=>i.classList.toggle('on',i.dataset.f===fn));
+  $('imgP').innerHTML='<img src="'+url+'">';
+}
+function onImg(){
+  const f=$('imgIn').files[0];if(!f)return;
+  upImg=f;selImg='';
+  document.querySelectorAll('.ig img').forEach(i=>i.classList.remove('on'));
+  $('imgUp').classList.add('ok');
+  $('imgUp').innerHTML=f.name+'<input type="file" id="imgIn" accept="image/*" onchange="onImg()">';
+  const r=new FileReader();r.onload=e=>$('imgP').innerHTML='<img src="'+e.target.result+'">';r.readAsDataURL(f);
+}
+function togAudio(){
+  const m=$('aMode').value;
+  $('secTTS').style.display=m==='tts'?'block':'none';
+  $('secFile').style.display=m==='file'?'block':'none';
+}
+function onAud(){
+  const f=$('audIn').files[0];if(!f)return;upAud=f;
+  $('audUp').classList.add('ok');
+  $('audUp').innerHTML=f.name+'<input type="file" id="audIn" accept="audio/*" onchange="onAud()">';
+  $('audP').innerHTML='<audio controls src="'+URL.createObjectURL(f)+'" style="width:100%"></audio>';
+}
+
+/* ── Generate ── */
+async function generate(){
+  const mode=$('aMode').value,txt=$('text').value.trim();
+  if(mode==='tts'&&!txt){alert('กรุณาพิมพ์ข้อความ');return;}
+  if(mode==='file'&&!upAud){alert('กรุณาอัปโหลดเสียง');return;}
+  if(!selImg&&!upImg){alert('กรุณาเลือกรูป');return;}
+
+  $('goBtn').disabled=true;$('goBtn').textContent='กำลังสร้าง...';
+  $('badge').textContent='กำลัง Generate...';$('badge').style.background='var(--red-s)';$('badge').style.color='var(--red)';
+  $('ovProg').classList.add('show');$('oFill').style.width='0%';$('oPct').textContent='0%';
+  $('ebox').style.display='none';
+
+  const fd=new FormData();
+  if(mode==='tts'){fd.append('text',txt);fd.append('voice',$('voice').value);fd.append('rate',$('rate').value);fd.append('pitch',$('pitch').value);}
+  else fd.append('audio',upAud);
+  if(upImg)fd.append('image',upImg);else fd.append('example_image',selImg);
+  fd.append('preset',preset);fd.append('preprocess',$('preproc').value);
+  fd.append('enhancer',$('enh').value);fd.append('background_enhancer',$('bgE').value);
+  fd.append('still',$('still').classList.contains('on')?'true':'false');
+  fd.append('expression_scale',$('expr').value);fd.append('pose_style',$('pose').value);
+  fd.append('input_yaw',$('yaw').value);fd.append('input_pitch',$('pit').value);fd.append('input_roll',$('rol').value);
+  fd.append('output_name',$('outName').value);
+
+  try{
+    const r=await fetch('/api/generate',{method:'POST',body:fd});
+    const d=await r.json();
+    if(!r.ok){err(d.detail||'Error');return;}
+    doPoll(d.job_id);
+  }catch(e){err('เชื่อมต่อไม่ได้: '+e.message);}
+}
+
+const STP={starting:'เริ่มต้น...',tts:'แปลงข้อความเป็นเสียง...',inference:'กำลัง render (5-10 นาที)...'};
+function doPoll(jid){
+  let fp=10,fails=0;
+  const started=Date.now();
+  const MAX_POLL=20*60*1000; // 20 min timeout
+  poll=setInterval(async()=>{
+    if(Date.now()-started>MAX_POLL){clearInterval(poll);err('Timeout: ใช้เวลานานเกินไป (>20 นาที)');return;}
+    try{
+      const r=await fetch('/api/status/'+jid);
+      if(!r.ok){if(++fails>5){clearInterval(poll);err('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');return;}return;}
+      fails=0;
+      const j=await r.json();
+      if(j.status==='done'){
+        clearInterval(poll);
+        $('oFill').style.width='100%';$('oPct').textContent='100%';$('oStep').textContent='เสร็จ!';
+        setTimeout(()=>{
+          $('ovProg').classList.remove('show');$('ovRes').classList.add('show');
+          $('rVid').src=j.result;$('dlBtn').href=j.result;$('dlBtn').download=j.filename||'output.mp4';
+          rst();
+        },600);return;
+      }
+      if(j.status==='error'){clearInterval(poll);$('ovProg').classList.remove('show');err(j.error||'Error');rst();return;}
+      const rp=j.progress||0;if(rp>fp)fp=rp;else if(fp<92)fp+=.25;
+      $('oFill').style.width=fp+'%';$('oPct').textContent=Math.round(fp)+'%';
+      $('oStep').textContent=STP[j.step]||'Processing...';
+    }catch(e){if(++fails>5){clearInterval(poll);err('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');}}
+  },2000);
+}
+function rst(){
+  $('goBtn').disabled=false;$('goBtn').textContent='Generate';
+  $('badge').textContent='พร้อมใช้งาน';$('badge').style.background='';$('badge').style.color='';
+}
+function err(m){$('ovProg').classList.remove('show');$('ebox').style.display='block';$('ebox').textContent=m;rst();if(poll)clearInterval(poll);}
+function closeRes(){$('ovRes').classList.remove('show');$('text').value='';}
+
+/* ── Helpers ── */
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+/* ── History ── */
+async function loadH(){
+  let items;
+  try{items=await(await fetch('/api/history')).json();}catch(e){items=[];}
+  const g=$('hGrid');g.innerHTML='';
+  $('hEmpty').style.display=items.length?'none':'block';
+  for(const it of items){
+    const kb=it.size_bytes?Math.round(it.size_bytes/1024):'?';
+    const dt=it.created?new Date(it.created).toLocaleString('th-TH'):'';
+    const safeText=esc(it.text||it.filename);
+    const safeFn=esc(it.filename);
+    const d=document.createElement('div');d.className='hi';
+    d.innerHTML=`<video src="${esc(it.video_url)}" preload="metadata" onclick="this.paused?this.play():this.pause()" muted></video>
+      <div class="meta"><div class="t">${safeText}</div>
+      <div class="d">${dt} &middot; ${kb} KB &middot; ${esc(it.preset||'')}</div>
+      <div class="a"><a class="btn btn-sm btn-g" href="${esc(it.video_url)}" download="${safeFn}">ดาวน์โหลด</a>
+      <button class="btn btn-sm btn-r" data-fn="${safeFn}" onclick="delH(this.dataset.fn,this)">ลบ</button></div></div>`;
+    g.appendChild(d);
+  }
+}
+async function delH(fn,b){
+  if(!confirm('ลบวิดีโอนี้?'))return;
+  const r=await fetch('/api/history/'+encodeURIComponent(fn),{method:'DELETE'});
+  if(!r.ok)return;
+  b.closest('.hi').remove();
+  if(!$('hGrid').children.length)$('hEmpty').style.display='block';
+}
+
+init();
+</script>
+</body>
+</html>
