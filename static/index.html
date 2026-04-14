@@ -1091,7 +1091,7 @@ function toggleTheme(){const t=getTheme()==='dark'?'light':'dark';localStorage.s
 applyTheme(getTheme());
 
 /* ── State ── */
-let preset='draft',selImg='',upImg=null,upAud=null,poll=null;
+let preset='draft',selImg='',upImg=null,upAud=null,poll=null,allPresets={};
 
 /* ── Init ── */
 async function init(){
@@ -1129,6 +1129,7 @@ async function init(){
 
   try{
     const pr=await api.get('/api/presets',{cache:true});
+    allPresets=pr;
     buildPresetUI(pr);
   }catch(e){errLog.handle('loadPresets',e);}
 
@@ -1183,7 +1184,7 @@ function buildPresetUI(pr){
   }
 }
 async function refreshPresets(){
-  try{api.invalidate('/api/presets');const pr=await api.get('/api/presets',{cache:true});buildPresetUI(pr);}catch(e){}
+  try{api.invalidate('/api/presets');const pr=await api.get('/api/presets',{cache:true});allPresets=pr;buildPresetUI(pr);}catch(e){}
 }
 function pick(k){
   preset=k;
@@ -1231,7 +1232,7 @@ async function generate(){
 }
 
 function showConfirm(mode, txt){
-  const p=PRESETS[preset]||PRESETS['standard'];
+  const p=allPresets[preset]||allPresets['draft']||{};
   const presetLabel=p.label||preset;
   const hasEnhancer=($('enh').value||p.enhancer||'')!=='none'&&($('enh').value||p.enhancer||'')!=='';
   const preproc=$('preproc').value||p.preprocess||'full';
