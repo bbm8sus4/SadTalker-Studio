@@ -21,12 +21,13 @@ import hmac
 import logging
 import threading
 import re
+import secrets
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
 from functools import lru_cache
 
-from fastapi import FastAPI, UploadFile, File, Form, Request, Response, Cookie
+from fastapi import FastAPI, UploadFile, File, Form, Request, Cookie
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -98,13 +99,12 @@ def _hash_pw(password: str) -> str:
 
 
 def _verify_pw(password: str, stored: str) -> bool:
-    """Compare password against stored hash. Also accepts plaintext for migration."""
+    """Timing-safe password comparison. Also accepts plaintext for one-time migration."""
     hashed = _hash_pw(password)
-    if stored == hashed:
+    if hmac.compare_digest(stored.encode(), hashed.encode()):
         return True
-    # Migration: if stored value is plaintext (not 64-char hex), hash-compare fails
-    # Accept plaintext match ONCE, then caller should re-hash
-    if len(stored) != 64 and stored == password:
+    # Migration: if stored value is plaintext (not 64-char hex), accept once
+    if len(stored) != 64 and hmac.compare_digest(stored.encode(), password.encode()):
         return True
     return False
 
@@ -180,7 +180,7 @@ def verify_session(token: str | None) -> dict | None:
 AUDIT_FILE = APP_DIR / "audit.log"
 
 def audit(user: str, role: str, action: str, target: str = "", detail: str = "", ip: str = ""):
-    """Write immutable audit entry. Fields: timestamp, user, role, action, target, detail, ip."""
+    """Write immutable audit entry. Never fails silently — logs to stderr on disk error."""
     entry = {
         "ts": datetime.utcnow().isoformat() + "Z",
         "user": user,
@@ -188,10 +188,13 @@ def audit(user: str, role: str, action: str, target: str = "", detail: str = "",
         "action": action,
         "target": target,
         "detail": detail,
-        "ip": ip,
+        "ip": ip or "unknown",
     }
-    with open(AUDIT_FILE, "a") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    try:
+        with open(AUDIT_FILE, "a") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError as e:
+        log.error("audit_write_failed", error=str(e), **entry)
     log.info("audit", **entry)
 
 
@@ -285,8 +288,8 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Simple in-memory rate limiter — 30 requests/minute per IP on /api/generate."""
-    LIMIT = 30
+    """In-memory rate limiter: 60 req/min per IP on generate + login."""
+    LIMIT = 60
     WINDOW = 60
 
     def __init__(self, app):
@@ -294,7 +297,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.hits: dict[str, list[float]] = defaultdict(list)
 
     async def dispatch(self, request: Request, call_next):
-        if request.url.path == "/api/generate" and request.method == "POST":
+        path = request.url.path
+        # Rate limit both generate and login endpoints
+        if (path == "/api/generate" or path == "/login") and request.method == "POST":
             ip = request.client.host if request.client else "unknown"
             now = time.time()
             self.hits[ip] = [t for t in self.hits[ip] if now - t < self.WINDOW]
@@ -396,24 +401,6 @@ def _cached_examples():
         for f in sorted(EXAMPLES_DIR.glob(ext)):
             images.append({"name": f.stem, "filename": f.name, "url": f"/examples/source_image/{f.name}"})
     return images
-
-VOICES = {
-    "th-TH-PremwadeeNeural": "ผู้หญิงไทย",
-    "th-TH-NiwatNeural": "ผู้ชายไทย",
-    "en-US-JennyNeural": "English Female",
-    "en-US-GuyNeural": "English Male",
-    "ja-JP-NanamiNeural": "日本語 Female",
-    "ko-KR-SunHiNeural": "한국어 Female",
-    "zh-CN-XiaoxiaoNeural": "中文 Female",
-}
-
-PRESETS = {
-    "draft": {"preprocess": "crop", "size": 256, "enhancer": "", "still": True, "expression_scale": 1.0, "label": "เร็ว (Draft)", "desc": "crop + 256px ไม่ enhance — เร็วสุด"},
-    "standard": {"preprocess": "full", "size": 256, "enhancer": "gfpgan", "still": True, "expression_scale": 1.0, "label": "มาตรฐาน", "desc": "full + GFPGAN — สมดุลคุณภาพ/เวลา"},
-    "hq": {"preprocess": "full", "size": 256, "enhancer": "gfpgan", "still": False, "expression_scale": 1.0, "label": "คุณภาพสูง", "desc": "full + GFPGAN + ขยับหัว"},
-    "marketing": {"preprocess": "full", "size": 256, "enhancer": "gfpgan", "still": True, "expression_scale": 1.2, "label": "การตลาด", "desc": "full + GFPGAN + expression เข้ม"},
-}
-
 
 def run_generation(job_id: str, params: dict):
     """Background worker for video generation."""
@@ -738,8 +725,10 @@ async def api_history():
 
 
 @app.delete("/api/history/{filename}")
-async def api_delete(filename: str):
-    safe = Path(filename).name  # strip directory components
+async def api_delete(request: Request, filename: str):
+    if not check_perm(getattr(request.state, "role", ""), "history.delete"):
+        return JSONResponse({"detail": "ไม่มีสิทธิ์ลบวิดีโอ"}, 403)
+    safe = Path(filename).name
     video_path = (OUTPUT_DIR / safe).resolve()
     meta_path = (OUTPUT_DIR / f"{safe}.json").resolve()
     if not str(video_path).startswith(str(OUTPUT_DIR.resolve())):
@@ -775,7 +764,9 @@ async def api_uploads():
 
 
 @app.delete("/api/uploads/{filename}")
-async def api_delete_upload(filename: str):
+async def api_delete_upload(request: Request, filename: str):
+    if not check_perm(getattr(request.state, "role", ""), "uploads.delete"):
+        return JSONResponse({"detail": "ไม่มีสิทธิ์ลบรูป"}, 403)
     safe = Path(filename).name
     fpath = (UPLOAD_DIR / safe).resolve()
     if not str(fpath).startswith(str(UPLOAD_DIR.resolve())):
@@ -788,7 +779,9 @@ async def api_delete_upload(filename: str):
 # ─── Video Rename ────────────────────────────────────────────
 
 @app.patch("/api/history/{filename}")
-async def api_rename_video(filename: str, new_name: str = Form(...)):
+async def api_rename_video(request: Request, filename: str, new_name: str = Form(...)):
+    if not check_perm(getattr(request.state, "role", ""), "history.rename"):
+        return JSONResponse({"detail": "ไม่มีสิทธิ์เปลี่ยนชื่อ"}, 403)
     safe_old = Path(filename).name
     old_video = (OUTPUT_DIR / safe_old).resolve()
     old_meta = (OUTPUT_DIR / f"{safe_old}.json").resolve()
@@ -841,6 +834,7 @@ async def api_custom_presets():
 
 @app.post("/api/custom-presets")
 async def api_create_preset(
+    request: Request,
     key: str = Form(...),
     label: str = Form(...),
     desc: str = Form(""),
@@ -849,6 +843,8 @@ async def api_create_preset(
     still: str = Form("true"),
     expression_scale: float = Form(1.0),
 ):
+    if not check_perm(getattr(request.state, "role", ""), "presets.create"):
+        return JSONResponse({"detail": "ไม่มีสิทธิ์สร้าง preset"}, 403)
     safe_key = re.sub(r'[^\w\-]', '_', key.strip().lower())
     if not safe_key or safe_key in PRESETS:
         return JSONResponse({"detail": "Invalid or reserved preset name"}, 400)
@@ -869,6 +865,7 @@ async def api_create_preset(
 
 @app.put("/api/custom-presets/{key}")
 async def api_update_preset(
+    request: Request,
     key: str,
     label: str = Form(...),
     desc: str = Form(""),
@@ -877,6 +874,8 @@ async def api_update_preset(
     still: str = Form("true"),
     expression_scale: float = Form(1.0),
 ):
+    if not check_perm(getattr(request.state, "role", ""), "presets.create"):
+        return JSONResponse({"detail": "ไม่มีสิทธิ์แก้ไข preset"}, 403)
     cp = load_custom_presets()
     if key not in cp:
         return JSONResponse({"detail": "Preset not found"}, 404)
@@ -895,7 +894,9 @@ async def api_update_preset(
 
 
 @app.delete("/api/custom-presets/{key}")
-async def api_delete_preset(key: str):
+async def api_delete_preset(request: Request, key: str):
+    if not check_perm(getattr(request.state, "role", ""), "presets.delete"):
+        return JSONResponse({"detail": "ไม่มีสิทธิ์ลบ preset"}, 403)
     cp = load_custom_presets()
     if key not in cp:
         return JSONResponse({"detail": "Preset not found"}, 404)
@@ -929,7 +930,6 @@ async def login_page(session: str | None = Cookie(None)):
 @app.post("/login")
 async def login_submit(
     request: Request,
-    response: Response,
     username: str = Form(...),
     password: str = Form(...),
 ):

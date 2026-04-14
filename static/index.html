@@ -1221,7 +1221,7 @@ async function loadH(){
   $('hEmpty').style.display='none';
   let items;
   try{items=await api.get('/api/history');}catch(e){errLog.handle('loadHistory',e);items=[];}
-  const g=$('hGrid');g.innerHTML='';
+  g.innerHTML='';
   $('hEmpty').style.display=items.length?'none':'block';
   for(const it of items){
     const kb=it.size_bytes?Math.round(it.size_bytes/1024):'?';
@@ -1263,7 +1263,7 @@ async function loadUploads(){
   $('uEmpty').style.display='none';
   let items;
   try{items=await api.get('/api/uploads');}catch(e){errLog.handle('loadUploads',e);items=[];}
-  const g=$('uGrid');g.innerHTML='';
+  g.innerHTML='';
   $('uEmpty').style.display=items.length?'none':'block';
   for(const it of items){
     const kb=Math.round((it.size_bytes||0)/1024);

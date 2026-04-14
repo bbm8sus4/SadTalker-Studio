@@ -20,9 +20,9 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from webui_app import (
     safe_path, create_session, verify_session, serializer,
-    PRESETS, VOICES, MAX_UPLOAD_BYTES, ADMIN_USER, ADMIN_PASS,
+    PRESETS, VOICES, MAX_UPLOAD_BYTES, _hash_pw, _verify_pw,
     StructuredLogger, load_custom_presets, save_custom_presets,
-    CUSTOM_PRESETS_FILE, OUTPUT_DIR, UPLOAD_DIR,
+    load_users, CUSTOM_PRESETS_FILE, OUTPUT_DIR, UPLOAD_DIR,
 )
 
 
@@ -95,14 +95,15 @@ class TestSafePath:
 class TestAuth:
 
     def test_should_create_valid_session_token(self):
-        token = create_session("admin")
+        token = create_session("admin", "admin")
         assert isinstance(token, str)
-        assert len(token) > 20  # signed token is substantial
+        assert len(token) > 20
 
     def test_should_verify_valid_session(self):
-        token = create_session("testuser")
-        user = verify_session(token)
-        assert user == "testuser"
+        token = create_session("testuser", "editor")
+        data = verify_session(token)
+        assert data["user"] == "testuser"
+        assert data["role"] == "editor"
 
     def test_should_reject_none_token(self):
         assert verify_session(None) is None
@@ -114,15 +115,26 @@ class TestAuth:
         assert verify_session("not.a.valid.token") is None
 
     def test_should_reject_tampered_token(self):
-        token = create_session("admin")
-        # Flip a character in the middle
+        token = create_session("admin", "admin")
         tampered = token[:10] + ("X" if token[10] != "X" else "Y") + token[11:]
         assert verify_session(tampered) is None
 
     def test_should_preserve_username_in_session(self):
         for name in ["admin", "boss", "user@email.com", "ผู้ใช้ไทย"]:
-            token = create_session(name)
-            assert verify_session(token) == name
+            token = create_session(name, "viewer")
+            data = verify_session(token)
+            assert data["user"] == name
+
+    def test_should_hash_password(self):
+        h = _hash_pw("mypassword")
+        assert len(h) == 64  # SHA-256 hex
+        assert _verify_pw("mypassword", h) is True
+        assert _verify_pw("wrong", h) is False
+
+    def test_should_migrate_plaintext_password(self):
+        """_verify_pw should accept plaintext for one-time migration."""
+        assert _verify_pw("oldpass", "oldpass") is True  # plaintext match
+        assert _verify_pw("wrong", "oldpass") is False
 
 
 # ═══════════════════════════════════════════════════════════════

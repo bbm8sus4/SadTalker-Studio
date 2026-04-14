@@ -21,16 +21,23 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from fastapi.testclient import TestClient
-from webui_app import app, OUTPUT_DIR, UPLOAD_DIR, CUSTOM_PRESETS_FILE
+from webui_app import app, OUTPUT_DIR, UPLOAD_DIR, CUSTOM_PRESETS_FILE, USERS_FILE
+
+
+@pytest.fixture(autouse=True)
+def _clean_users_for_integration():
+    """Remove users.json so credentials bootstrap fresh from env vars."""
+    if USERS_FILE.exists():
+        USERS_FILE.unlink()
+    yield
 
 
 @pytest.fixture
 def client():
     """Authenticated test client with session cookie."""
     c = TestClient(app)
-    # Login to get session cookie
     resp = c.post("/login", data={"username": "admin", "password": "sadtalker"}, follow_redirects=False)
-    assert resp.status_code == 302
+    assert resp.status_code == 302, f"Login failed: {resp.status_code}"
     return c
 
 
