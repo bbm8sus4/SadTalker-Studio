@@ -37,8 +37,12 @@ def make_coordinate_grid_2d(spatial_size, type):
     Create a meshgrid [-1,1] x [-1,1] of given spatial_size.
     """
     h, w = spatial_size
-    x = torch.arange(w).type(type)
-    y = torch.arange(h).type(type)
+    if 'mps' in str(type):
+        x = torch.arange(w).float().to('mps')
+        y = torch.arange(h).float().to('mps')
+    else:
+        x = torch.arange(w).type(type)
+        y = torch.arange(h).type(type)
 
     x = (2 * (x / (w - 1)) - 1)
     y = (2 * (y / (h - 1)) - 1)
@@ -53,9 +57,15 @@ def make_coordinate_grid_2d(spatial_size, type):
 
 def make_coordinate_grid(spatial_size, type):
     d, h, w = spatial_size
-    x = torch.arange(w).type(type)
-    y = torch.arange(h).type(type)
-    z = torch.arange(d).type(type)
+    # MPS fix: .type('torch.mps.FloatTensor') fails, use .float().to(device) instead
+    if 'mps' in str(type):
+        x = torch.arange(w).float().to('mps')
+        y = torch.arange(h).float().to('mps')
+        z = torch.arange(d).float().to('mps')
+    else:
+        x = torch.arange(w).type(type)
+        y = torch.arange(h).type(type)
+        z = torch.arange(d).type(type)
 
     x = (2 * (x / (w - 1)) - 1)
     y = (2 * (y / (h - 1)) - 1)
