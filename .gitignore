@@ -179,3 +179,8 @@ uploads/
 temp_audio*.mp3
 test_audio.mp3
 venv/
+users.json
+audit.log
+analytics.log
+flags.json
+custom_presets.json

@@ -91,23 +91,61 @@ ROLE_PERMISSIONS = {
     "viewer": {"history", "uploads"},
 }
 
+def _hash_pw(password: str) -> str:
+    """SHA-256 salted hash. Never store plaintext passwords."""
+    salt = SECRET_KEY[:16]
+    return hashlib.sha256((salt + password).encode()).hexdigest()
+
+
+def _verify_pw(password: str, stored: str) -> bool:
+    """Compare password against stored hash. Also accepts plaintext for migration."""
+    hashed = _hash_pw(password)
+    if stored == hashed:
+        return True
+    # Migration: if stored value is plaintext (not 64-char hex), hash-compare fails
+    # Accept plaintext match ONCE, then caller should re-hash
+    if len(stored) != 64 and stored == password:
+        return True
+    return False
+
+
 def load_users() -> dict:
-    """Load user database. Format: {"username": {"password": "...", "role": "admin"}}"""
+    """Load user database. Passwords stored as SHA-256 hashes."""
     if USERS_FILE.exists():
         try:
             return json.loads(USERS_FILE.read_text())
         except Exception:
             pass
-    # Default: single admin from env vars
+    # Bootstrap from env vars — hash the password before storing
+    default_user = os.environ.get("ST_USER", "admin")
+    default_pass = os.environ.get("ST_PASS", "sadtalker")
     return {
-        os.environ.get("ST_USER", "admin"): {
-            "password": os.environ.get("ST_PASS", "sadtalker"),
+        default_user: {
+            "password": _hash_pw(default_pass),
             "role": "admin",
         }
     }
 
+
 def save_users(data: dict):
     USERS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+
+
+def _migrate_plaintext_passwords():
+    """One-time migration: hash any plaintext passwords in users.json."""
+    if not USERS_FILE.exists():
+        return
+    users = load_users()
+    changed = False
+    for username, udata in users.items():
+        pw = udata.get("password", "")
+        if len(pw) != 64:  # not a SHA-256 hash
+            udata["password"] = _hash_pw(pw)
+            changed = True
+            log.warn("password_migrated", user=username, detail="plaintext→hash")
+    if changed:
+        save_users(users)
+
 
 def check_perm(role: str, perm: str) -> bool:
     return perm in ROLE_PERMISSIONS.get(role, set())
@@ -898,7 +936,11 @@ async def login_submit(
     users = load_users()
     user_data = users.get(username)
     ip = request.client.host if request.client else ""
-    if user_data and user_data.get("password") == password:
+    if user_data and _verify_pw(password, user_data.get("password", "")):
+        # Auto-migrate plaintext → hash on successful login
+        if len(user_data.get("password", "")) != 64:
+            user_data["password"] = _hash_pw(password)
+            save_users(users)
         role = user_data.get("role", "viewer")
         token = create_session(username, role)
         resp = RedirectResponse("/", 302)
@@ -994,7 +1036,7 @@ async def api_create_user(request: Request, username: str = Form(...), password:
     users = load_users()
     if username in users:
         return JSONResponse({"detail": "User already exists"}, 400)
-    users[username] = {"password": password, "role": role}
+    users[username] = {"password": _hash_pw(password), "role": role}
     save_users(users)
     audit(request.state.user, "admin", "user_created", target=username, detail=f"role={role}")
     return {"ok": True}
@@ -1039,6 +1081,16 @@ async def home(session: str | None = Cookie(None)):
 
 if __name__ == "__main__":
     import uvicorn
+
+    # Migrate any plaintext passwords on startup
+    _migrate_plaintext_passwords()
+
+    # Warn if using default credentials
+    default_pass = os.environ.get("ST_PASS", "sadtalker")
+    if default_pass == "sadtalker":
+        print("\n  *** WARNING: Using default password! ***")
+        print("  Set ST_PASS environment variable for production.\n")
+
     print("=" * 50)
     print("  SadTalker Studio")
     print(f"  http://localhost:8000")
