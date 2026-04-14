@@ -476,15 +476,6 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
     </li>
   </ul>
 
-  <div class="sb-label">พรีเซ็ต</div>
-  <ul class="sb-menu">
-    <li onclick="go('presets')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
-      จัดการ Preset
-    </li>
-  </ul>
-  <ul class="sb-menu" id="sbPresets"></ul>
-
   <div class="sb-label">ช่วยเหลือ</div>
   <ul class="sb-menu">
     <li onclick="go('guide')">
@@ -915,8 +906,8 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
     </div>
     <select class="bb-pill" id="vChip"></select>
     <select class="bb-pill" id="pChip">
-      <option value="draft">Draft</option><option value="standard" selected>มาตรฐาน</option>
-      <option value="hq">คุณภาพสูง</option><option value="marketing">การตลาด</option>
+      <option value="draft">เร็ว</option><option value="standard" selected>มาตรฐาน</option>
+      <option value="hq">คุณภาพสูง</option>
     </select>
     <button class="btn-go" id="goBtn" onclick="generate()">Generate</button>
   </div>
@@ -1176,14 +1167,19 @@ function go(p){
   history.replaceState(null,'','#'+p);
 }
 function buildPresetUI(pr){
-  const ch=$('chips'),sb=$('sbPresets');
-  if(ch)ch.innerHTML='';if(sb)sb.innerHTML='';
-  for(const[k,p] of Object.entries(pr)){
-    const c=document.createElement('button');
-    c.className='chip'+(k===preset?' on':'');c.dataset.k=k;c.textContent=p.label;
-    c.onclick=()=>pick(k);if(ch)ch.appendChild(c);
-    const li=document.createElement('li');li.dataset.k=k;li.textContent=p.label;
-    li.onclick=()=>{pick(k);go('create');};if(sb)sb.appendChild(li);
+  const ch=$('chips');
+  if(ch){
+    ch.innerHTML='';
+    for(const[k,p] of Object.entries(pr)){
+      const c=document.createElement('button');
+      c.className='chip'+(k===preset?' on':'');c.dataset.k=k;c.textContent=p.label;
+      c.onclick=()=>pick(k);ch.appendChild(c);
+    }
+    // Add manage link at the end
+    const link=document.createElement('button');
+    link.className='chip';link.style.color='var(--accent)';link.style.borderStyle='dashed';
+    link.textContent='+ จัดการ';link.onclick=()=>go('presets');
+    ch.appendChild(link);
   }
 }
 async function refreshPresets(){
