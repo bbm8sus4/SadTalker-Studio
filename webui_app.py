@@ -417,6 +417,154 @@ async def api_examples():
     return images
 
 
+# ─── Uploads CRUD ────────────────────────────────────────────
+
+@app.get("/api/uploads")
+async def api_uploads():
+    """List all user-uploaded images."""
+    items = []
+    for ext in ("*.png", "*.jpg", "*.jpeg", "*.webp"):
+        for f in sorted(UPLOAD_DIR.glob(ext), key=lambda x: x.stat().st_mtime, reverse=True):
+            if "_img" in f.name:  # only image uploads, not audio
+                items.append({
+                    "filename": f.name,
+                    "url": f"/uploads/{f.name}",
+                    "size_bytes": f.stat().st_size,
+                    "created": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+                })
+    return items
+
+
+@app.delete("/api/uploads/{filename}")
+async def api_delete_upload(filename: str):
+    safe = Path(filename).name
+    fpath = (UPLOAD_DIR / safe).resolve()
+    if not str(fpath).startswith(str(UPLOAD_DIR.resolve())):
+        return JSONResponse({"detail": "Invalid filename"}, 400)
+    if fpath.exists():
+        fpath.unlink()
+    return {"ok": True}
+
+
+# ─── Video Rename ────────────────────────────────────────────
+
+@app.patch("/api/history/{filename}")
+async def api_rename_video(filename: str, new_name: str = Form(...)):
+    safe_old = Path(filename).name
+    old_video = (OUTPUT_DIR / safe_old).resolve()
+    old_meta = (OUTPUT_DIR / f"{safe_old}.json").resolve()
+    if not str(old_video).startswith(str(OUTPUT_DIR.resolve())) or not old_video.exists():
+        return JSONResponse({"detail": "Video not found"}, 404)
+
+    # Sanitize new name
+    safe_new = re.sub(r'[^\w\-. ]', '_', Path(new_name).name)
+    if not safe_new or safe_new.startswith('.'):
+        return JSONResponse({"detail": "Invalid name"}, 400)
+    if not safe_new.endswith(".mp4"):
+        safe_new += ".mp4"
+    new_video = (OUTPUT_DIR / safe_new).resolve()
+    if not str(new_video).startswith(str(OUTPUT_DIR.resolve())):
+        return JSONResponse({"detail": "Invalid name"}, 400)
+
+    old_video.rename(new_video)
+    # Update metadata
+    if old_meta.exists():
+        meta = json.loads(old_meta.read_text())
+        meta["filename"] = safe_new
+        new_meta = OUTPUT_DIR / f"{safe_new}.json"
+        new_meta.write_text(json.dumps(meta, ensure_ascii=False, indent=2))
+        if old_meta != new_meta:
+            old_meta.unlink()
+    return {"ok": True, "filename": safe_new}
+
+
+# ─── Custom Presets CRUD ─────────────────────────────────────
+
+CUSTOM_PRESETS_FILE = APP_DIR / "custom_presets.json"
+
+def load_custom_presets() -> dict:
+    if CUSTOM_PRESETS_FILE.exists():
+        try:
+            return json.loads(CUSTOM_PRESETS_FILE.read_text())
+        except Exception:
+            pass
+    return {}
+
+
+def save_custom_presets(data: dict):
+    CUSTOM_PRESETS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+
+
+@app.get("/api/custom-presets")
+async def api_custom_presets():
+    return load_custom_presets()
+
+
+@app.post("/api/custom-presets")
+async def api_create_preset(
+    key: str = Form(...),
+    label: str = Form(...),
+    desc: str = Form(""),
+    preprocess: str = Form("full"),
+    enhancer: str = Form("gfpgan"),
+    still: str = Form("true"),
+    expression_scale: float = Form(1.0),
+):
+    safe_key = re.sub(r'[^\w\-]', '_', key.strip().lower())
+    if not safe_key or safe_key in PRESETS:
+        return JSONResponse({"detail": "Invalid or reserved preset name"}, 400)
+    cp = load_custom_presets()
+    cp[safe_key] = {
+        "preprocess": preprocess,
+        "size": 256,
+        "enhancer": enhancer if enhancer != "none" else "",
+        "still": still == "true",
+        "expression_scale": expression_scale,
+        "label": label.strip(),
+        "desc": desc.strip(),
+        "custom": True,
+    }
+    save_custom_presets(cp)
+    return {"ok": True, "key": safe_key}
+
+
+@app.put("/api/custom-presets/{key}")
+async def api_update_preset(
+    key: str,
+    label: str = Form(...),
+    desc: str = Form(""),
+    preprocess: str = Form("full"),
+    enhancer: str = Form("gfpgan"),
+    still: str = Form("true"),
+    expression_scale: float = Form(1.0),
+):
+    cp = load_custom_presets()
+    if key not in cp:
+        return JSONResponse({"detail": "Preset not found"}, 404)
+    cp[key] = {
+        "preprocess": preprocess,
+        "size": 256,
+        "enhancer": enhancer if enhancer != "none" else "",
+        "still": still == "true",
+        "expression_scale": expression_scale,
+        "label": label.strip(),
+        "desc": desc.strip(),
+        "custom": True,
+    }
+    save_custom_presets(cp)
+    return {"ok": True}
+
+
+@app.delete("/api/custom-presets/{key}")
+async def api_delete_preset(key: str):
+    cp = load_custom_presets()
+    if key not in cp:
+        return JSONResponse({"detail": "Preset not found"}, 404)
+    del cp[key]
+    save_custom_presets(cp)
+    return {"ok": True}
+
+
 @app.get("/api/voices")
 async def api_voices():
     return VOICES
@@ -424,7 +572,9 @@ async def api_voices():
 
 @app.get("/api/presets")
 async def api_presets():
-    return PRESETS
+    merged = dict(PRESETS)
+    merged.update(load_custom_presets())
+    return merged
 
 
 # ─── Auth Endpoints ──────────────────────────────────────────

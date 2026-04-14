@@ -351,9 +351,19 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="10"/></svg>
       ประวัติ
     </li>
+    <li onclick="go('uploads')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+      รูปที่อัปโหลด
+    </li>
   </ul>
 
   <div class="sb-label">พรีเซ็ต</div>
+  <ul class="sb-menu">
+    <li onclick="go('presets')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+      จัดการ Preset
+    </li>
+  </ul>
   <ul class="sb-menu" id="sbPresets"></ul>
 
   <div class="sb-bottom" style="flex-direction:column;gap:8px;align-items:stretch;">
@@ -507,6 +517,41 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
       <div class="he" id="hEmpty">ยังไม่มีวิดีโอ</div>
     </div>
 
+    <!-- PAGE: UPLOADS -->
+    <div class="pg" id="pg-uploads">
+      <div class="hg" id="uGrid"></div>
+      <div class="he" id="uEmpty">ยังไม่มีรูปที่อัปโหลด</div>
+    </div>
+
+    <!-- PAGE: PRESETS MANAGER -->
+    <div class="pg" id="pg-presets">
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-h">สร้าง Preset ใหม่</div>
+        <div class="gr gr-2e" style="margin-bottom:12px;">
+          <div class="fg"><label class="fl">ชื่อ (key)</label><input class="fi" id="cpKey" placeholder="เช่น my_style"></div>
+          <div class="fg"><label class="fl">ชื่อแสดง</label><input class="fi" id="cpLabel" placeholder="เช่น สไตล์ของฉัน"></div>
+        </div>
+        <div class="fg"><label class="fl">คำอธิบาย</label><input class="fi" id="cpDesc" placeholder="เช่น full + GFPGAN + expression 1.3"></div>
+        <div class="gr gr-3" style="margin-top:12px;">
+          <div class="fg"><label class="fl">Preprocess</label>
+            <select class="fs" id="cpPreproc"><option value="crop">crop</option><option value="full" selected>full</option><option value="extcrop">extcrop</option><option value="resize">resize</option><option value="extfull">extfull</option></select>
+          </div>
+          <div class="fg"><label class="fl">Enhancer</label>
+            <select class="fs" id="cpEnh"><option value="gfpgan" selected>GFPGAN</option><option value="RestoreFormer">RestoreFormer</option><option value="none">ไม่ใช้</option></select>
+          </div>
+          <div class="fg"><label class="fl">Expression Scale</label><input class="fi" type="number" id="cpExpr" value="1.0" step="0.1" min="0.5" max="2.0"></div>
+        </div>
+        <div class="trow" style="margin-top:8px;">
+          <span style="font-size:.86rem;">Still Mode</span>
+          <div class="tg on" id="cpStill" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <button class="btn btn-s" style="margin-top:14px;width:100%;justify-content:center;" onclick="createPreset()">บันทึก Preset</button>
+      </div>
+      <div class="card-h">Preset ที่สร้าง</div>
+      <div id="cpList"></div>
+      <div class="he" id="cpEmpty" style="padding:30px;">ยังไม่มี preset ที่สร้างเอง</div>
+    </div>
+
   </div><!-- /content -->
 
   <!-- Bottom bar -->
@@ -599,17 +644,19 @@ async function init(){
 }
 
 /* ── Nav ── */
-const titles={create:'สร้างวิดีโอ',settings:'ตั้งค่า',history:'ประวัติ'};
+const titles={create:'สร้างวิดีโอ',settings:'ตั้งค่า',history:'ประวัติ',uploads:'รูปที่อัปโหลด',presets:'จัดการ Preset'};
 function go(p){
   document.querySelectorAll('.pg').forEach(x=>x.classList.remove('on'));
   $('pg-'+p).classList.add('on');
   $('pageTitle').textContent=titles[p]||p;
+  const navMap={create:'สร้างวิดีโอ',settings:'ตั้งค่า',history:'ประวัติ',uploads:'รูปที่อัปโหลด',presets:'จัดการ Preset'};
   document.querySelectorAll('.sb-menu li').forEach(li=>{
     li.classList.remove('on');
-    const t=li.textContent.trim();
-    if((p==='create'&&t==='สร้างวิดีโอ')||(p==='settings'&&t==='ตั้งค่า')||(p==='history'&&t==='ประวัติ'))li.classList.add('on');
+    if(li.textContent.trim()===navMap[p])li.classList.add('on');
   });
   if(p==='history')loadH();
+  if(p==='uploads')loadUploads();
+  if(p==='presets')loadCustomPresets();
   history.replaceState(null,'','#'+p);
 }
 function pick(k){
@@ -729,9 +776,17 @@ async function loadH(){
       <div class="meta"><div class="t">${safeText}</div>
       <div class="d">${dt} &middot; ${kb} KB &middot; ${esc(it.preset||'')}</div>
       <div class="a"><a class="btn btn-sm btn-g" href="${esc(it.video_url)}" download="${safeFn}">ดาวน์โหลด</a>
+      <button class="btn btn-sm btn-o" data-fn="${safeFn}" onclick="renH(this.dataset.fn)">ชื่อใหม่</button>
       <button class="btn btn-sm btn-r" data-fn="${safeFn}" onclick="delH(this.dataset.fn,this)">ลบ</button></div></div>`;
     g.appendChild(d);
   }
+}
+async function renH(fn){
+  const n=prompt('ตั้งชื่อใหม่:',fn);
+  if(!n||n===fn)return;
+  const fd=new FormData();fd.append('new_name',n);
+  const r=await fetch('/api/history/'+encodeURIComponent(fn),{method:'PATCH',body:fd});
+  if(r.ok)loadH();else alert('เปลี่ยนชื่อไม่สำเร็จ');
 }
 async function delH(fn,b){
   if(!confirm('ลบวิดีโอนี้?'))return;
@@ -739,6 +794,69 @@ async function delH(fn,b){
   if(!r.ok)return;
   b.closest('.hi').remove();
   if(!$('hGrid').children.length)$('hEmpty').style.display='block';
+}
+
+/* ── Uploads ── */
+async function loadUploads(){
+  let items;
+  try{items=await(await fetch('/api/uploads')).json();}catch(e){items=[];}
+  const g=$('uGrid');g.innerHTML='';
+  $('uEmpty').style.display=items.length?'none':'block';
+  for(const it of items){
+    const kb=Math.round((it.size_bytes||0)/1024);
+    const dt=it.created?new Date(it.created).toLocaleString('th-TH'):'';
+    const d=document.createElement('div');d.className='hi';
+    d.innerHTML=`<img src="${esc(it.url)}" style="width:100%;aspect-ratio:1;object-fit:cover;background:var(--bg2);display:block;">
+      <div class="meta"><div class="t">${esc(it.filename)}</div>
+      <div class="d">${dt} &middot; ${kb} KB</div>
+      <div class="a"><button class="btn btn-sm btn-o" data-fn="${esc(it.filename)}" onclick="useUpload(this.dataset.fn,'${esc(it.url)}')">ใช้รูปนี้</button>
+      <button class="btn btn-sm btn-r" data-fn="${esc(it.filename)}" onclick="delUpload(this.dataset.fn,this)">ลบ</button></div></div>`;
+    g.appendChild(d);
+  }
+}
+function useUpload(fn,url){selI(fn,url);go('create');}
+async function delUpload(fn,b){
+  if(!confirm('ลบรูปนี้?'))return;
+  const r=await fetch('/api/uploads/'+encodeURIComponent(fn),{method:'DELETE'});
+  if(!r.ok)return;
+  b.closest('.hi').remove();
+  if(!$('uGrid').children.length)$('uEmpty').style.display='block';
+}
+
+/* ── Custom Presets ── */
+async function loadCustomPresets(){
+  let cp;
+  try{cp=await(await fetch('/api/custom-presets')).json();}catch(e){cp={};}
+  const list=$('cpList');list.innerHTML='';
+  const keys=Object.keys(cp);
+  $('cpEmpty').style.display=keys.length?'none':'block';
+  for(const[k,p] of Object.entries(cp)){
+    const d=document.createElement('div');
+    d.className='card';d.style.marginBottom='10px';
+    d.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;">
+      <div><strong>${esc(p.label)}</strong> <span style="color:var(--muted);font-size:.78rem;">(${esc(k)})</span>
+      <div style="font-size:.78rem;color:var(--text2);margin-top:2px;">${esc(p.desc||'')} &middot; ${esc(p.preprocess)} &middot; ${esc(p.enhancer||'no enhance')} &middot; expr ${p.expression_scale} &middot; ${p.still?'still':'motion'}</div></div>
+      <div style="display:flex;gap:6px;flex-shrink:0;"><button class="btn btn-sm btn-o" onclick="usePreset('${esc(k)}')">ใช้</button><button class="btn btn-sm btn-r" onclick="delPreset('${esc(k)}')">ลบ</button></div></div>`;
+    list.appendChild(d);
+  }
+}
+async function createPreset(){
+  const key=$('cpKey').value.trim(),label=$('cpLabel').value.trim();
+  if(!key||!label){alert('กรุณากรอกชื่อ key และชื่อแสดง');return;}
+  const fd=new FormData();
+  fd.append('key',key);fd.append('label',label);fd.append('desc',$('cpDesc').value);
+  fd.append('preprocess',$('cpPreproc').value);fd.append('enhancer',$('cpEnh').value);
+  fd.append('expression_scale',$('cpExpr').value);
+  fd.append('still',$('cpStill').classList.contains('on')?'true':'false');
+  const r=await fetch('/api/custom-presets',{method:'POST',body:fd});
+  if(r.ok){$('cpKey').value='';$('cpLabel').value='';$('cpDesc').value='';loadCustomPresets();alert('บันทึกแล้ว');}
+  else{const d=await r.json();alert(d.detail||'Error');}
+}
+function usePreset(k){pick(k);go('create');}
+async function delPreset(k){
+  if(!confirm('ลบ preset นี้?'))return;
+  await fetch('/api/custom-presets/'+encodeURIComponent(k),{method:'DELETE'});
+  loadCustomPresets();
 }
 
 init();
