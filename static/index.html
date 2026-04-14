@@ -366,6 +366,14 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
   </ul>
   <ul class="sb-menu" id="sbPresets"></ul>
 
+  <div class="sb-label">ช่วยเหลือ</div>
+  <ul class="sb-menu">
+    <li onclick="go('guide')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      คู่มือการใช้งาน
+    </li>
+  </ul>
+
   <div class="sb-bottom" style="flex-direction:column;gap:8px;align-items:stretch;">
     <div style="display:flex;align-items:center;justify-content:space-between;">
       <span class="sb-ver" id="userLabel">v1.0</span>
@@ -552,6 +560,141 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
       <div class="he" id="cpEmpty" style="padding:30px;">ยังไม่มี preset ที่สร้างเอง</div>
     </div>
 
+    <!-- PAGE: GUIDE -->
+    <div class="pg" id="pg-guide">
+
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-h">เริ่มต้นใช้งาน</div>
+        <div style="font-size:.9rem;line-height:1.8;color:var(--text2);">
+          <p style="margin-bottom:12px;"><strong style="color:var(--text);">SadTalker Studio</strong> คือเครื่องมือสร้างวิดีโอ Talking Head — ใส่รูปหน้าคน + ข้อความ แล้วระบบจะสร้างวิดีโอที่หน้าขยับปากพูดตามข้อความให้อัตโนมัติ</p>
+          <p><strong style="color:var(--accent);">3 ขั้นตอนง่ายๆ:</strong></p>
+          <ol style="padding-left:20px;margin-top:6px;">
+            <li style="margin-bottom:8px;"><strong>เลือกรูปภาพ</strong> — อัปโหลดรูปหน้าคน หรือเลือกจากตัวอย่าง (ต้องเห็นหน้าชัด 1 หน้า)</li>
+            <li style="margin-bottom:8px;"><strong>พิมพ์ข้อความ</strong> — ที่ช่องด้านล่าง แล้วเลือกเสียงพูด (ไทย/อังกฤษ/ญี่ปุ่น/เกาหลี/จีน)</li>
+            <li style="margin-bottom:8px;"><strong>กด Generate</strong> — รอประมาณ 5-10 นาที จะได้วิดีโอ MP4 พร้อมดาวน์โหลด</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-h">Preset คืออะไร?</div>
+        <div style="font-size:.88rem;line-height:1.8;color:var(--text2);">
+          <p style="margin-bottom:10px;">Preset คือชุดค่าตั้งสำเร็จรูปที่กำหนดคุณภาพและสไตล์วิดีโอ:</p>
+          <table style="width:100%;border-collapse:collapse;font-size:.84rem;">
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 0;font-weight:600;width:120px;">เร็ว (Draft)</td>
+              <td style="padding:8px 0;color:var(--text2);">เร็วสุด ตัดเฉพาะหน้า ไม่ enhance — เหมาะทดสอบ</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 0;font-weight:600;">มาตรฐาน</td>
+              <td style="padding:8px 0;color:var(--text2);">เต็มภาพ + GFPGAN enhance — สมดุลคุณภาพ/เวลา</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 0;font-weight:600;">คุณภาพสูง</td>
+              <td style="padding:8px 0;color:var(--text2);">เต็มภาพ + GFPGAN + หัวขยับ — คุณภาพสูงสุด</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;font-weight:600;">การตลาด</td>
+              <td style="padding:8px 0;color:var(--text2);">เต็มภาพ + GFPGAN + expression เข้ม — เหมาะโปรโมท</td>
+            </tr>
+          </table>
+          <p style="margin-top:10px;">สร้าง Preset เองได้ที่เมนู <strong>"จัดการ Preset"</strong></p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-h">ตั้งค่าขั้นสูง</div>
+        <div style="font-size:.88rem;line-height:1.8;color:var(--text2);">
+          <table style="width:100%;border-collapse:collapse;font-size:.84rem;">
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 0;font-weight:600;width:150px;">Expression Scale</td>
+              <td style="padding:8px 0;">ปรับความเข้มของการแสดงออก (0.5=นิ่ง, 1.0=ปกติ, 2.0=เวอร์มาก)</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 0;font-weight:600;">Pose Style</td>
+              <td style="padding:8px 0;">46 รูปแบบการขยับหัว (0-45) แต่ละเลขให้ลักษณะต่างกัน</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 0;font-weight:600;">Still Mode</td>
+              <td style="padding:8px 0;">ON = หัวนิ่ง ขยับแค่ปาก/ตา (แนะนำ) | OFF = หัวขยับตามเสียง</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 0;font-weight:600;">Preprocess</td>
+              <td style="padding:8px 0;">crop=เฉพาะหน้า, full=เต็มรูป, resize=ย่อทั้งรูป</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 0;font-weight:600;">Face Enhancer</td>
+              <td style="padding:8px 0;">GFPGAN หรือ RestoreFormer — ทำให้หน้าคมชัดขึ้น</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 0;font-weight:600;">BG Enhancer</td>
+              <td style="padding:8px 0;">RealESRGAN — ขยายความละเอียดพื้นหลัง 2 เท่า</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;font-weight:600;">Yaw / Pitch / Roll</td>
+              <td style="padding:8px 0;">กำหนดมุมหมุนหัวเอง (ซ้าย-ขวา / ก้ม-เงย / เอียง)</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-h">เสียงพูด</div>
+        <div style="font-size:.88rem;line-height:1.8;color:var(--text2);">
+          <table style="width:100%;border-collapse:collapse;font-size:.84rem;">
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:6px 0;font-weight:600;width:100px;">ไทย</td>
+              <td style="padding:6px 0;">ผู้หญิง (Premwadee) / ผู้ชาย (Niwat)</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:6px 0;font-weight:600;">English</td>
+              <td style="padding:6px 0;">Female (Jenny) / Male (Guy)</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:6px 0;font-weight:600;">日本語</td>
+              <td style="padding:6px 0;">Female (Nanami)</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:6px 0;font-weight:600;">한국어</td>
+              <td style="padding:6px 0;">Female (SunHi)</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 0;font-weight:600;">中文</td>
+              <td style="padding:6px 0;">Female (Xiaoxiao)</td>
+            </tr>
+          </table>
+          <p style="margin-top:10px;">ปรับ <strong>ความเร็ว</strong> (ช้ามาก — เร็วมาก) และ <strong>ระดับเสียง</strong> (ต่ำ — สูง) ได้</p>
+          <p>หรือ <strong>อัปโหลดไฟล์เสียง</strong> (.mp3 / .wav) ของตัวเองแทน TTS ก็ได้</p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-h">ใช้งานผ่าน Command Line</div>
+        <div style="font-size:.88rem;line-height:1.8;color:var(--text2);">
+          <p style="margin-bottom:8px;">นอกจากหน้าเว็บ ยังใช้คำสั่งในเทอร์มินัลได้:</p>
+          <div style="background:var(--bg2);border-radius:8px;padding:12px 16px;font-family:monospace;font-size:.82rem;overflow-x:auto;">
+            <div style="color:var(--muted);margin-bottom:4px;"># เสียงผู้หญิงไทย (default)</div>
+            <div>./ss "สวัสดีค่ะ" รูปหน้า.jpg output.mp4</div>
+            <div style="color:var(--muted);margin-top:8px;margin-bottom:4px;"># เสียงผู้ชายไทย</div>
+            <div>VOICE=th-TH-NiwatNeural ./ss "สวัสดีครับ" face.jpg</div>
+            <div style="color:var(--muted);margin-top:8px;margin-bottom:4px;"># เสียงอังกฤษ</div>
+            <div>VOICE=en-US-JennyNeural ./ss "Hello!" face.jpg</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">เกี่ยวกับ</div>
+        <div style="font-size:.88rem;line-height:1.8;color:var(--text2);">
+          <p><strong>SadTalker Studio v1.0</strong></p>
+          <p>พัฒนาบน SadTalker (CVPR 2023) + Edge TTS + FastAPI</p>
+          <p>Face enhancement โดย GFPGAN / RestoreFormer</p>
+          <p style="margin-top:8px;"><a href="https://github.com/bbm8sus4/SadTalker-Studio" target="_blank" style="color:var(--accent);">GitHub Repository</a></p>
+        </div>
+      </div>
+
+    </div>
+
   </div><!-- /content -->
 
   <!-- Bottom bar -->
@@ -644,12 +787,12 @@ async function init(){
 }
 
 /* ── Nav ── */
-const titles={create:'สร้างวิดีโอ',settings:'ตั้งค่า',history:'ประวัติ',uploads:'รูปที่อัปโหลด',presets:'จัดการ Preset'};
+const titles={create:'สร้างวิดีโอ',settings:'ตั้งค่า',history:'ประวัติ',uploads:'รูปที่อัปโหลด',presets:'จัดการ Preset',guide:'คู่มือการใช้งาน'};
 function go(p){
   document.querySelectorAll('.pg').forEach(x=>x.classList.remove('on'));
   $('pg-'+p).classList.add('on');
   $('pageTitle').textContent=titles[p]||p;
-  const navMap={create:'สร้างวิดีโอ',settings:'ตั้งค่า',history:'ประวัติ',uploads:'รูปที่อัปโหลด',presets:'จัดการ Preset'};
+  const navMap={create:'สร้างวิดีโอ',settings:'ตั้งค่า',history:'ประวัติ',uploads:'รูปที่อัปโหลด',presets:'จัดการ Preset',guide:'คู่มือการใช้งาน'};
   document.querySelectorAll('.sb-menu li').forEach(li=>{
     li.classList.remove('on');
     if(li.textContent.trim()===navMap[p])li.classList.add('on');
