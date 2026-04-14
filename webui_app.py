@@ -713,11 +713,14 @@ async def api_generate(
     if engine == "syncso":
         if not SYNC_API_KEY:
             return JSONResponse({"detail": "Sync.so API key ยังไม่ได้ตั้งค่า (ตั้ง SYNC_API_KEY env var)"}, 400)
-        # Pass base URL so Sync.so can access our files
         host = request.headers.get("host", "localhost:8000")
         scheme = "https" if "cloudflare" in host or "trycloudflare" in host else "http"
         params["base_url"] = f"{scheme}://{host}"
         thread = threading.Thread(target=run_syncso, args=(job_id, params), daemon=True)
+    elif engine == "liveportrait":
+        if not LIVEPORTRAIT_VENV.exists():
+            return JSONResponse({"detail": "LivePortrait ยังไม่ได้ติดตั้ง"}, 400)
+        thread = threading.Thread(target=run_liveportrait, args=(job_id, params), daemon=True)
     else:
         thread = threading.Thread(target=run_generation, args=(job_id, params), daemon=True)
     thread.start()
@@ -1222,6 +1225,90 @@ def run_syncso(job_id: str, params: dict):
         job["status"] = "error"
         job["error"] = str(e)
         log.error("syncso_failed", job_id=job_id, error=str(e))
+    finally:
+        job["finished_at"] = time.time()
+
+
+# ─── LivePortrait Engine (local enhance) ─────────────────────
+
+LIVEPORTRAIT_DIR = APP_DIR / "liveportrait"
+LIVEPORTRAIT_VENV = LIVEPORTRAIT_DIR / "venv" / "bin" / "python"
+
+def run_liveportrait(job_id: str, params: dict):
+    """Background worker: SadTalker draft → LivePortrait enhance."""
+    job = jobs[job_id]
+    try:
+        # Step 1: Run SadTalker first (draft quality, fast)
+        job["step"] = "sadtalker_draft"
+        job["progress"] = 5
+        run_generation(job_id, {**params, "enhancer": "", "preprocess": "crop"})
+
+        # Check if SadTalker succeeded
+        if job.get("status") == "error":
+            return  # SadTalker failed, error already set
+
+        sadtalker_video = str(OUTPUT_DIR / job.get("filename", ""))
+        if not Path(sadtalker_video).exists():
+            job["status"] = "error"
+            job["error"] = "SadTalker draft ไม่สำเร็จ"
+            return
+
+        # Step 2: Run LivePortrait enhancement
+        job["status"] = "running"  # reset from "done"
+        job["step"] = "liveportrait"
+        job["progress"] = 60
+
+        lp_output_dir = str(OUTPUT_DIR / f"lp_{job_id}")
+        os.makedirs(lp_output_dir, exist_ok=True)
+
+        cmd = [
+            str(LIVEPORTRAIT_VENV),
+            str(LIVEPORTRAIT_DIR / "inference.py"),
+            "--source", params["image_path"],
+            "--driving", sadtalker_video,
+            "--output_dir", lp_output_dir,
+            "--flag_crop_driving_video",
+        ]
+
+        proc = subprocess.run(cmd, cwd=str(LIVEPORTRAIT_DIR),
+            capture_output=True, text=True, timeout=600,
+            env={**os.environ, "PYTORCH_ENABLE_MPS_FALLBACK": "1"})
+
+        if proc.returncode != 0:
+            log.warn("liveportrait_failed", error=proc.stderr[-300:])
+            # Fallback: keep SadTalker output (already saved)
+            job["status"] = "done"
+            job["progress"] = 100
+            job["meta"]["engine"] = "sadtalker (liveportrait failed)"
+            return
+
+        # Find LivePortrait output
+        lp_videos = sorted(Path(lp_output_dir).rglob("*.mp4"), key=lambda f: f.stat().st_mtime, reverse=True)
+        if lp_videos:
+            # Replace SadTalker output with enhanced version
+            enhanced = lp_videos[0]
+            final_path = OUTPUT_DIR / job["filename"]
+            shutil.copy2(str(enhanced), str(final_path))
+            job["meta"]["engine"] = "sadtalker+liveportrait"
+            job["meta"]["size_bytes"] = final_path.stat().st_size
+            # Update metadata file
+            (OUTPUT_DIR / f"{job['filename']}.json").write_text(
+                json.dumps(job["meta"], ensure_ascii=False, indent=2))
+
+        # Cleanup
+        shutil.rmtree(lp_output_dir, ignore_errors=True)
+
+        job["status"] = "done"
+        job["progress"] = 100
+        log.info("liveportrait_done", job_id=job_id)
+
+    except subprocess.TimeoutExpired:
+        job["status"] = "error"
+        job["error"] = "LivePortrait timeout (>10 min)"
+    except Exception as e:
+        job["status"] = "error"
+        job["error"] = str(e)
+        log.error("liveportrait_failed", job_id=job_id, error=str(e))
     finally:
         job["finished_at"] = time.time()
 
