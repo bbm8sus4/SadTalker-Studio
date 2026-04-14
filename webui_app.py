@@ -579,6 +579,7 @@ def cleanup_old_jobs():
 @app.post("/api/generate")
 async def api_generate(
     request: Request,
+    engine: str = Form("sadtalker"),
     text: str = Form(""),
     voice: str = Form("th-TH-PremwadeeNeural"),
     rate: str = Form("+0%"),
@@ -706,8 +707,19 @@ async def api_generate(
     params["input_pitch"] = parse_ints(input_pitch)
     params["input_roll"] = parse_ints(input_roll)
 
-    jobs[job_id] = {"status": "running", "step": "starting", "progress": 0, "created": time.time(), "owner": user}
-    thread = threading.Thread(target=run_generation, args=(job_id, params), daemon=True)
+    jobs[job_id] = {"status": "running", "step": "starting", "progress": 0, "created": time.time(), "owner": user, "engine": engine}
+
+    # Route to engine
+    if engine == "syncso":
+        if not SYNC_API_KEY:
+            return JSONResponse({"detail": "Sync.so API key ยังไม่ได้ตั้งค่า (ตั้ง SYNC_API_KEY env var)"}, 400)
+        # Pass base URL so Sync.so can access our files
+        host = request.headers.get("host", "localhost:8000")
+        scheme = "https" if "cloudflare" in host or "trycloudflare" in host else "http"
+        params["base_url"] = f"{scheme}://{host}"
+        thread = threading.Thread(target=run_syncso, args=(job_id, params), daemon=True)
+    else:
+        thread = threading.Thread(target=run_generation, args=(job_id, params), daemon=True)
     thread.start()
 
     return {"job_id": job_id}
@@ -1084,6 +1096,134 @@ async def api_delete_user(request: Request, username: str):
     save_users(users)
     audit(request.state.user, "admin", "user_deleted", target=username)
     return {"ok": True}
+
+
+# ─── Sync.so Engine (cloud lip-sync API) ─────────────────────
+
+SYNC_API_KEY = os.environ.get("SYNC_API_KEY", "")
+SYNC_API_URL = "https://api.synclabs.so"
+
+import httpx
+
+def run_syncso(job_id: str, params: dict):
+    """Background worker: TTS → upload-aware → Sync.so API → download result."""
+    job = jobs[job_id]
+    try:
+        audio_path = params["audio_path"]
+
+        # Step 1: TTS if needed
+        if params.get("tts_text"):
+            job["step"] = "tts"
+            job["progress"] = 5
+            tts_cmd = [
+                str(APP_DIR / "venv" / "bin" / "edge-tts"),
+                "--voice", params.get("voice", "th-TH-PremwadeeNeural"),
+                "--rate", params.get("rate", "+0%"),
+                "--pitch", params.get("pitch", "+0Hz"),
+                "--text", params["tts_text"],
+                "--write-media", audio_path,
+            ]
+            proc = subprocess.run(tts_cmd, capture_output=True, text=True, timeout=60)
+            if proc.returncode != 0:
+                job["status"] = "error"
+                job["error"] = "TTS failed"
+                return
+
+        job["step"] = "cloud"
+        job["progress"] = 15
+
+        # Step 2: Construct public URLs via tunnel
+        base_url = params.get("base_url", "http://localhost:8000")
+        img_path = params["image_path"]
+        # Copy files to uploads dir so they're served via /uploads/
+        audio_name = f"{job_id}_sync_audio{Path(audio_path).suffix}"
+        img_name = f"{job_id}_sync_img{Path(img_path).suffix}"
+        shutil.copy2(audio_path, str(UPLOAD_DIR / audio_name))
+        if not Path(img_path).parent == UPLOAD_DIR:
+            shutil.copy2(img_path, str(UPLOAD_DIR / img_name))
+        else:
+            img_name = Path(img_path).name
+
+        audio_url = f"{base_url}/uploads/{audio_name}"
+        video_url = f"{base_url}/uploads/{img_name}"
+
+        # Step 3: Submit to Sync.so
+        job["progress"] = 20
+        with httpx.Client(timeout=30) as client:
+            resp = client.post(f"{SYNC_API_URL}/lipsync", json={
+                "audioUrl": audio_url,
+                "videoUrl": video_url,
+                "model": "sync-1.7.1-beta",
+                "synergize": True,
+            }, headers={"x-api-key": SYNC_API_KEY})
+
+            if resp.status_code != 200 and resp.status_code != 201:
+                job["status"] = "error"
+                job["error"] = f"Sync.so error: {resp.text[:200]}"
+                return
+
+            sync_job = resp.json()
+            sync_id = sync_job.get("id", "")
+
+        # Step 4: Poll for completion
+        job["step"] = "cloud_render"
+        for i in range(120):  # max 10 min
+            time.sleep(5)
+            job["progress"] = min(90, 20 + i)
+            with httpx.Client(timeout=15) as client:
+                resp = client.get(f"{SYNC_API_URL}/lipsync/{sync_id}",
+                    headers={"x-api-key": SYNC_API_KEY})
+                if resp.status_code != 200:
+                    continue
+                data = resp.json()
+                status = data.get("status", "")
+                if status == "COMPLETED":
+                    result_url = data.get("videoUrl", "")
+                    break
+                elif status == "FAILED":
+                    job["status"] = "error"
+                    job["error"] = "Sync.so render failed"
+                    return
+        else:
+            job["status"] = "error"
+            job["error"] = "Sync.so timeout (10 min)"
+            return
+
+        # Step 5: Download result video
+        job["progress"] = 95
+        final_name = params.get("output_name", f"sync_{job_id}.mp4")
+        if not final_name.endswith(".mp4"):
+            final_name += ".mp4"
+        final_path = safe_path(OUTPUT_DIR, final_name) or (OUTPUT_DIR / f"sync_{job_id}.mp4")
+
+        with httpx.Client(timeout=60) as client:
+            dl = client.get(result_url)
+            final_path.write_bytes(dl.content)
+
+        # Save metadata
+        meta = {
+            "id": job_id, "filename": final_path.name,
+            "created": datetime.now().isoformat(),
+            "text": params.get("tts_text", ""), "voice": params.get("voice", ""),
+            "image": Path(params["image_path"]).name,
+            "preset": "pro", "engine": "sync.so",
+            "size_bytes": final_path.stat().st_size,
+        }
+        (OUTPUT_DIR / f"{final_path.name}.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2))
+
+        job["status"] = "done"
+        job["progress"] = 100
+        job["result"] = f"/outputs/{final_path.name}"
+        job["filename"] = final_path.name
+        job["meta"] = meta
+        log.info("syncso_done", job_id=job_id)
+
+    except Exception as e:
+        job["status"] = "error"
+        job["error"] = str(e)
+        log.error("syncso_failed", job_id=job_id, error=str(e))
+    finally:
+        job["finished_at"] = time.time()
 
 
 # ─── AI Copilot (Claude Max via CLI) ─────────────────────────

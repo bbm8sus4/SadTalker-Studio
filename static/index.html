@@ -932,6 +932,10 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
       <option value="draft" selected>เร็ว</option><option value="standard">มาตรฐาน</option>
       <option value="hq">คุณภาพสูง</option>
     </select>
+    <select class="bb-pill" id="engineChip">
+      <option value="sadtalker" selected>Local (MPS)</option>
+      <option value="syncso">Sync.so (cloud)</option>
+    </select>
     <button class="btn-go" id="goBtn" onclick="generate()">Generate</button>
   </div>
 </div><!-- /main-wrap -->
@@ -1281,17 +1285,22 @@ function showConfirm(mode, txt){
   const estRenderSec=Math.round(estFrames*secPerFrame);
   const estTotalMin=Math.max(1,Math.round((estRenderSec+10)/60));
 
+  const eng=$('engineChip').value;
+  const engLabel=eng==='syncso'?'Sync.so (cloud) — เร็ว+คุณภาพสูง':'SadTalker (local MPS)';
+  // Sync.so is much faster (~30s) vs local
+  const finalEstMin=eng==='syncso'?1:estTotalMin;
+
   const tbl=$('confirmTable');
   tbl.innerHTML=`
+    <tr><td>Engine</td><td style="color:var(--accent);font-weight:700;">${esc(engLabel)}</td></tr>
     <tr><td>รูปภาพ</td><td>${esc(imgName)}</td></tr>
     <tr><td>เสียง</td><td>${mode==='tts'?esc(voiceLabel)+' ('+esc(rateLabel)+')':'ไฟล์เสียง: '+esc(upAud?.name||'')}</td></tr>
     <tr><td>ข้อความ</td><td>${mode==='tts'?esc(txt.substring(0,60))+(txt.length>60?'...':''):'(อัปโหลดเสียง)'}</td></tr>
     <tr><td>Preset</td><td>${esc(presetLabel)}</td></tr>
-    <tr><td>Preprocess</td><td>${esc(preproc)}</td></tr>
-    <tr><td>Face Enhance</td><td>${hasEnhancer?'เปิด (GFPGAN)':'ปิด — เร็วขึ้น 2 เท่า'}</td></tr>
+    ${eng==='sadtalker'?`<tr><td>Face Enhance</td><td>${hasEnhancer?'เปิด (GFPGAN)':'ปิด — เร็วขึ้น 2 เท่า'}</td></tr>`:''}
     <tr><td>ความยาวเสียง</td><td>~${estAudioSec} วินาที</td></tr>
-    <tr><td>จำนวน Frame</td><td>~${estFrames} frames (25 fps)</td></tr>`;
-  $('estTime').textContent='~'+estTotalMin+' นาที';
+    ${eng==='sadtalker'?`<tr><td>จำนวน Frame</td><td>~${estFrames} frames (25 fps)</td></tr>`:''}`;
+  $('estTime').textContent=eng==='syncso'?'~30 วินาที — 1 นาที':'~'+finalEstMin+' นาที';
   $('confirmOv').classList.add('show');
 }
 
@@ -1307,6 +1316,7 @@ async function confirmGenerate(){
   if(mode==='tts'){fd.append('text',txt);fd.append('voice',$('voice').value);fd.append('rate',$('rate').value);fd.append('pitch',$('pitch').value);}
   else fd.append('audio',upAud);
   if(upImg)fd.append('image',upImg);else fd.append('example_image',selImg);
+  fd.append('engine',$('engineChip').value);
   fd.append('preset',preset);fd.append('preprocess',$('preproc').value);
   fd.append('enhancer',$('enh').value);fd.append('background_enhancer',$('bgE').value);
   fd.append('still',$('still').classList.contains('on')?'true':'false');
