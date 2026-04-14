@@ -219,7 +219,7 @@ def safe_path(base: Path, user_input: str) -> Path | None:
 # ─── Middleware Pipeline ─────────────────────────────────────
 # Order: RequestID → Logging → RateLimit → Auth
 
-PUBLIC_PATHS = {"/login", "/favicon.ico", "/static/sw.js"}
+PUBLIC_PATHS = {"/login", "/favicon.ico"}
 
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
@@ -271,7 +271,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
     """Enforce session auth + RBAC + maintenance mode."""
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if path in PUBLIC_PATHS or path.startswith("/examples/"):
+        if path in PUBLIC_PATHS or path.startswith("/examples/") or path.startswith("/static/"):
             return await call_next(request)
 
         # Maintenance mode — block all except admin
@@ -1011,6 +1011,20 @@ async def api_delete_user(request: Request, username: str):
     save_users(users)
     audit(request.state.user, "admin", "user_deleted", target=username)
     return {"ok": True}
+
+
+# ─── PDPA / Data Subject Rights ──────────────────────────────
+
+@app.post("/api/anonymize")
+async def api_anonymize(request: Request):
+    """Request account deletion / data anonymization (PDPA Art.33)."""
+    user = getattr(request.state, "user", "")
+    role = getattr(request.state, "role", "")
+    audit(user, role, "anonymize_request", detail="User requested data deletion/anonymization")
+    log.info("anonymize_request", user=user)
+    # In production: queue for admin review + 30-day processing
+    # For now: record the request in audit log
+    return {"ok": True, "message": "คำขอถูกบันทึกแล้ว ผู้ดูแลจะดำเนินการภายใน 30 วัน"}
 
 
 # ─── Frontend (protected) ────────────────────────────────────

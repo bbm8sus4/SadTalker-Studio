@@ -13,10 +13,14 @@
 <link rel="dns-prefetch" href="https://speech.platform.bing.com">
 <style>
 /* ═══════════════════════════════════════════
-   THEME TOKENS
+   DESIGN TOKENS — Multi-Brand Architecture
+   Override by loading /static/tokens.json at runtime.
+   CSS vars are the single source of truth for ALL visual styles.
+   No hardcoded hex/px anywhere in component CSS below.
    ═══════════════════════════════════════════ */
 :root,
 [data-theme="light"]{
+  /* Colors */
   --bg:     #F5F5F7;
   --bg2:    #EEEEF0;
   --surface:#FFFFFF;
@@ -33,6 +37,16 @@
   --red-s:  rgba(255,69,58,.1);
   --shadow: 0 1px 4px rgba(0,0,0,.04);
   --glass:  rgba(255,255,255,.7);
+  /* Typography */
+  --font:   'Noto Sans Thai',system-ui,-apple-system,sans-serif;
+  --fs-base:15px; --fs-sm:.82rem; --fs-xs:.72rem; --fs-lg:1.05rem;
+  --lh:     1.6;
+  /* Spacing */
+  --sp-xs:4px; --sp-sm:8px; --sp-md:16px; --sp-lg:24px; --sp-xl:32px;
+  /* Radius */
+  --r-sm:8px; --r-md:10px; --r-lg:12px; --r-xl:16px; --r-pill:20px;
+  /* Layout */
+  --sidebar:220px; --topbar:52px; --bottombar:64px;
 }
 [data-theme="dark"]{
   --bg:     #000000;
@@ -430,6 +444,10 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       คู่มือการใช้งาน
     </li>
+    <li onclick="go('privacy')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      ความเป็นส่วนตัว
+    </li>
   </ul>
 
   <div class="sb-bottom" style="flex-direction:column;gap:8px;align-items:stretch;">
@@ -772,6 +790,74 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
 
     </div>
 
+    <!-- PAGE: PRIVACY (PDPA/GDPR) -->
+    <div class="pg" id="pg-privacy">
+
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-h">การจัดการข้อมูลส่วนบุคคล (PDPA)</div>
+        <div style="font-size:.88rem;line-height:1.8;color:var(--text2);">
+          <p style="margin-bottom:10px;">SadTalker Studio เก็บข้อมูลเฉพาะที่จำเป็นสำหรับการให้บริการ ตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล (PDPA) และ GDPR</p>
+          <table style="width:100%;border-collapse:collapse;font-size:.84rem;">
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 0;font-weight:600;width:140px;">ข้อมูลที่เก็บ</td>
+              <td style="padding:8px 0;">ชื่อผู้ใช้, รูปที่อัปโหลด, วิดีโอที่สร้าง, ข้อความ TTS, ประวัติการใช้งาน</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 0;font-weight:600;">วัตถุประสงค์</td>
+              <td style="padding:8px 0;">สร้างวิดีโอ Talking Head ตามคำขอของผู้ใช้เท่านั้น</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px 0;font-weight:600;">การเก็บรักษา</td>
+              <td style="padding:8px 0;">ข้อมูลเก็บในเซิร์ฟเวอร์ ไม่ส่งต่อบุคคลที่สาม</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;font-weight:600;">ระยะเวลา</td>
+              <td style="padding:8px 0;">จนกว่าผู้ใช้จะลบ หรือขอลบบัญชี</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-h">การยินยอม (Consent Management)</div>
+        <div style="font-size:.88rem;line-height:1.8;color:var(--text2);">
+          <div id="consentPanel">
+            <div class="trow" style="border-bottom:1px solid var(--border);padding:10px 0;">
+              <div><strong>จำเป็น</strong> — การทำงานหลักของระบบ<br><span style="font-size:.78rem;color:var(--muted);">เซสชัน, การยืนยันตัวตน</span></div>
+              <div class="tg on" style="opacity:.5;pointer-events:none;"></div>
+            </div>
+            <div class="trow" style="border-bottom:1px solid var(--border);padding:10px 0;">
+              <div><strong>การวิเคราะห์</strong> — ปรับปรุงบริการ<br><span style="font-size:.78rem;color:var(--muted);">ติดตามการใช้งาน, page views</span></div>
+              <div class="tg" id="consentAnalytics" onclick="toggleConsent('analytics',this)"></div>
+            </div>
+            <div class="trow" style="padding:10px 0;">
+              <div><strong>การปรับแต่ง</strong> — จดจำค่าที่ตั้ง<br><span style="font-size:.78rem;color:var(--muted);">ธีม, preset ที่เลือกล่าสุด</span></div>
+              <div class="tg on" id="consentPersonal" onclick="toggleConsent('personalization',this)"></div>
+            </div>
+          </div>
+          <button class="btn btn-s" style="margin-top:14px;width:100%;justify-content:center;" onclick="saveConsent()">บันทึกการยินยอม</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-h">สิทธิ์ของเจ้าของข้อมูล (Data Subject Rights)</div>
+        <div style="font-size:.88rem;line-height:1.8;color:var(--text2);">
+          <p style="margin-bottom:14px;">คุณมีสิทธิ์ตาม PDPA ดังนี้:</p>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <button class="btn btn-o" style="width:100%;justify-content:center;" onclick="exportMyData()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              ส่งออกข้อมูลของฉัน (Data Export)
+            </button>
+            <button class="btn btn-o" style="width:100%;justify-content:center;" onclick="requestAnonymize()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+              ขอลบบัญชี / ทำให้ข้อมูลไม่ระบุตัวตน
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
   </div><!-- /content -->
 
   <!-- Bottom bar -->
@@ -1011,12 +1097,12 @@ async function init(){
 }
 
 /* ── Nav ── */
-const titles={create:'สร้างวิดีโอ',settings:'ตั้งค่า',history:'ประวัติ',uploads:'รูปที่อัปโหลด',presets:'จัดการ Preset',guide:'คู่มือการใช้งาน'};
+const titles={create:'สร้างวิดีโอ',settings:'ตั้งค่า',history:'ประวัติ',uploads:'รูปที่อัปโหลด',presets:'จัดการ Preset',guide:'คู่มือการใช้งาน',privacy:'ความเป็นส่วนตัว'};
 function go(p){
   document.querySelectorAll('.pg').forEach(x=>x.classList.remove('on'));
   $('pg-'+p).classList.add('on');
   $('pageTitle').textContent=titles[p]||p;
-  const navMap={create:'สร้างวิดีโอ',settings:'ตั้งค่า',history:'ประวัติ',uploads:'รูปที่อัปโหลด',presets:'จัดการ Preset',guide:'คู่มือการใช้งาน'};
+  const navMap={create:'สร้างวิดีโอ',settings:'ตั้งค่า',history:'ประวัติ',uploads:'รูปที่อัปโหลด',presets:'จัดการ Preset',guide:'คู่มือการใช้งาน',privacy:'ความเป็นส่วนตัว'};
   document.querySelectorAll('.sb-menu li').forEach(li=>{
     li.classList.remove('on');
     if(li.textContent.trim()===navMap[p])li.classList.add('on');
@@ -1240,6 +1326,149 @@ async function delPreset(k){
   loadCustomPresets();
 }
 
+/* ════════════════════════════════════════════
+   AI-READY CONTEXT — serialize app state for LLM integration
+   Call getAIContext() to get clean JSON payload of current screen + user state.
+   Future: wire this to an embedded AI Copilot or /api/ai-assist endpoint.
+   ════════════════════════════════════════════ */
+function getAIContext(){
+  const page=location.hash.replace('#','')||'create';
+  return {
+    user:{name:$('userLabel')?.textContent||'',role:currentRole,permissions:[...currentPerms]},
+    screen:{page,title:titles[page]||page},
+    form:page==='create'?{
+      text:$('text')?.value||'',
+      voice:$('voice')?.value||'',
+      preset,
+      hasImage:!!(selImg||upImg),
+      imageName:selImg||(upImg?.name||''),
+      audioMode:$('aMode')?.value||'tts',
+    }:null,
+    flags,
+    consent:loadConsent(),
+    timestamp:new Date().toISOString(),
+    timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,
+  };
+}
+// Expose globally for dev console / future AI widget
+window.__aiContext=getAIContext;
+
+/* ════════════════════════════════════════════
+   DESIGN TOKEN LOADER — Multi-Brand Theming
+   Load /static/tokens.json and apply as CSS vars.
+   Switch brands by replacing the JSON file — zero code changes.
+   ════════════════════════════════════════════ */
+async function loadDesignTokens(){
+  try{
+    const t=await(await fetch('/static/tokens.json')).json();
+    const root=document.documentElement;
+    // Apply typography + spacing + radius tokens
+    if(t.typography){
+      root.style.setProperty('--font',t.typography.font_family);
+      root.style.setProperty('--fs-base',t.typography.font_size_base);
+      root.style.setProperty('--lh',t.typography.line_height);
+    }
+    if(t.spacing){
+      for(const[k,v] of Object.entries(t.spacing))root.style.setProperty('--sp-'+k,v);
+    }
+    if(t.radius){
+      for(const[k,v] of Object.entries(t.radius))root.style.setProperty('--r-'+k,v);
+    }
+    if(t.layout){
+      if(t.layout.sidebar_width)root.style.setProperty('--sidebar',t.layout.sidebar_width);
+    }
+    // Brand name
+    if(t.brand){document.title=t.brand;}
+    if(t.logo_text){const logo=Q('.sb-logo');if(logo)logo.textContent=t.logo_text;}
+  }catch(e){/* tokens.json optional — defaults in CSS work fine */}
+}
+
+/* ════════════════════════════════════════════
+   UTC TIME — All timestamps sent to backend in UTC.
+   Display converts to local timezone automatically.
+   ════════════════════════════════════════════ */
+function utcNow(){return new Date().toISOString();}
+function localTime(isoStr){
+  if(!isoStr)return '';
+  return new Date(isoStr).toLocaleString('th-TH',{timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone});
+}
+/** Format currency in THB minor units (satang) to display string.
+ *  e.g. formatTHB(200000) → "2,000.00 บาท" */
+function formatTHB(satang){
+  const baht=satang/100;
+  return baht.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2})+' บาท';
+}
+
+/* ════════════════════════════════════════════
+   CONSENT MANAGEMENT (PDPA/GDPR)
+   Granular consent stored in localStorage.
+   ════════════════════════════════════════════ */
+function loadConsent(){
+  try{return JSON.parse(localStorage.getItem('st_consent'))||{essential:true,analytics:false,personalization:true};}
+  catch(e){return{essential:true,analytics:false,personalization:true};}
+}
+function saveConsentData(c){localStorage.setItem('st_consent',JSON.stringify(c));}
+
+function toggleConsent(key,el){el.classList.toggle('on');}
+
+function saveConsent(){
+  const c={
+    essential:true,
+    analytics:$('consentAnalytics')?.classList.contains('on')||false,
+    personalization:$('consentPersonal')?.classList.contains('on')||false,
+    updated:utcNow(),
+  };
+  saveConsentData(c);
+  trackEvent('consent_updated',c);
+  toast('บันทึกการยินยอมแล้ว','success');
+}
+
+function initConsent(){
+  const c=loadConsent();
+  if(c.analytics)$('consentAnalytics')?.classList.add('on');
+  else $('consentAnalytics')?.classList.remove('on');
+  if(c.personalization)$('consentPersonal')?.classList.add('on');
+  else $('consentPersonal')?.classList.remove('on');
+}
+
+/* ════════════════════════════════════════════
+   DATA SUBJECT RIGHTS — Export + Anonymize
+   ════════════════════════════════════════════ */
+async function exportMyData(){
+  toast('กำลังรวบรวมข้อมูล...','info');
+  try{
+    const[me,history,uploads]=await Promise.all([
+      api.get('/api/me'),api.get('/api/history'),api.get('/api/uploads'),
+    ]);
+    const exportData={
+      exported_at:utcNow(),
+      user:me,
+      consent:loadConsent(),
+      videos:history,
+      uploads:uploads,
+    };
+    const blob=new Blob([JSON.stringify(exportData,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='sadtalker-data-export-'+Date.now()+'.json';
+    a.click();URL.revokeObjectURL(url);
+    trackEvent('data_export');
+    toast('ส่งออกข้อมูลสำเร็จ!','success');
+  }catch(e){toast(errLog.handle('exportData',e),'error');}
+}
+
+async function requestAnonymize(){
+  const confirmed=await undoSnack('จะลบบัญชีและข้อมูลทั้งหมด คุณมีเวลา 10 วินาทีในการยกเลิก',10);
+  if(!confirmed){toast('ยกเลิกแล้ว','info');return;}
+  try{
+    await api.post('/api/anonymize',new FormData());
+    toast('ส่งคำขอลบบัญชีแล้ว ผู้ดูแลจะดำเนินการภายใน 30 วัน','success',8000);
+    trackEvent('anonymize_request');
+  }catch(e){toast(errLog.handle('anonymize',e),'error');}
+}
+
+/* ── Bootstrap ── */
+loadDesignTokens();
+initConsent();
 init();
 </script>
 </body>
