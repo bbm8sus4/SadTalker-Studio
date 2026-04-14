@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""SadTalker Web UI — Full-featured browser interface with authentication."""
+"""
+SadTalker Studio — Enterprise-grade web interface for talking head generation.
+
+Architecture:
+  - FastAPI backend with middleware pipeline (logging → rate-limit → auth)
+  - Signed session cookies (itsdangerous) — no client-side token exposure
+  - Structured JSON logging for observability
+  - Response caching for static data (voices, presets, examples)
+  - Path-safe file operations with resolve() checks on all I/O
+"""
 
 import os
 import subprocess
@@ -9,15 +18,21 @@ import time
 import shutil
 import hashlib
 import hmac
+import logging
 import threading
 import re
 from pathlib import Path
 from datetime import datetime
+from collections import defaultdict
+from functools import lru_cache
 
 from fastapi import FastAPI, UploadFile, File, Form, Request, Response, Cookie
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+
+# ─── Paths ───────────────────────────────────────────────────
 
 APP_DIR = Path(__file__).parent
 UPLOAD_DIR = APP_DIR / "uploads"
@@ -27,8 +42,41 @@ EXAMPLES_AUDIO_DIR = APP_DIR / "examples" / "driven_audio"
 UPLOAD_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 
+# Max upload: 20 MB
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+
+# ─── Structured Logger ───────────────────────────────────────
+# JSON-formatted logs — easy to pipe into ELK/Datadog/CloudWatch
+
+class StructuredLogger:
+    """Centralized logger that outputs structured JSON for observability."""
+
+    def __init__(self, name: str = "sadtalker"):
+        self.logger = logging.getLogger(name)
+        self.logger.setLevel(logging.INFO)
+        if not self.logger.handlers:
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter("%(message)s"))
+            self.logger.addHandler(handler)
+
+    def _emit(self, level: str, event: str, **ctx):
+        entry = {
+            "ts": datetime.utcnow().isoformat() + "Z",
+            "level": level,
+            "event": event,
+            **ctx,
+        }
+        self.logger.log(getattr(logging, level.upper(), 20), json.dumps(entry, ensure_ascii=False, default=str))
+
+    def info(self, event, **ctx):  self._emit("info", event, **ctx)
+    def warn(self, event, **ctx):  self._emit("warning", event, **ctx)
+    def error(self, event, **ctx): self._emit("error", event, **ctx)
+
+log = StructuredLogger()
+
+
 # ─── Auth Config ─────────────────────────────────────────────
-# Set via environment variables or .env file
+
 ADMIN_USER = os.environ.get("ST_USER", "admin")
 ADMIN_PASS = os.environ.get("ST_PASS", "sadtalker")
 SECRET_KEY = os.environ.get("ST_SECRET", uuid.uuid4().hex)
@@ -36,7 +84,7 @@ SESSION_MAX_AGE = 86400 * 7  # 7 days
 
 serializer = URLSafeTimedSerializer(SECRET_KEY)
 
-# Track running jobs
+# In-memory state
 jobs: dict = {}
 
 
@@ -56,29 +104,130 @@ def verify_session(token: str | None) -> str | None:
         return None
 
 
-from starlette.middleware.base import BaseHTTPMiddleware
+# ─── Path Safety ─────────────────────────────────────────────
+
+def safe_path(base: Path, user_input: str) -> Path | None:
+    """Resolve user-supplied filename and verify it stays inside base dir.
+    Returns resolved Path or None if unsafe."""
+    clean = Path(user_input).name  # strip directory traversal
+    clean = re.sub(r'[^\w\-. ]', '_', clean)
+    if not clean or clean.startswith('.'):
+        return None
+    resolved = (base / clean).resolve()
+    if not str(resolved).startswith(str(base.resolve())):
+        return None
+    return resolved
+
+
+# ─── Middleware Pipeline ─────────────────────────────────────
+# Order: RequestID → Logging → RateLimit → Auth
 
 PUBLIC_PATHS = {"/login", "/favicon.ico"}
 
+
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    """Attach a unique request ID to every request for tracing."""
+    async def dispatch(self, request: Request, call_next):
+        rid = uuid.uuid4().hex[:12]
+        request.state.request_id = rid
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = rid
+        return response
+
+
+class LoggingMiddleware(BaseHTTPMiddleware):
+    """Log every request with method, path, status, and duration."""
+    async def dispatch(self, request: Request, call_next):
+        start = time.time()
+        response = await call_next(request)
+        duration_ms = round((time.time() - start) * 1000)
+        rid = getattr(request.state, "request_id", "-")
+        if not request.url.path.startswith("/examples/"):  # skip static noise
+            log.info("http_request",
+                rid=rid, method=request.method, path=request.url.path,
+                status=response.status_code, ms=duration_ms)
+        return response
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Simple in-memory rate limiter — 30 requests/minute per IP on /api/generate."""
+    LIMIT = 30
+    WINDOW = 60
+
+    def __init__(self, app):
+        super().__init__(app)
+        self.hits: dict[str, list[float]] = defaultdict(list)
+
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path == "/api/generate" and request.method == "POST":
+            ip = request.client.host if request.client else "unknown"
+            now = time.time()
+            self.hits[ip] = [t for t in self.hits[ip] if now - t < self.WINDOW]
+            if len(self.hits[ip]) >= self.LIMIT:
+                log.warn("rate_limited", ip=ip, path=request.url.path)
+                return JSONResponse({"detail": "Too many requests"}, 429)
+            self.hits[ip].append(now)
+        return await call_next(request)
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
+    """Enforce session auth on all routes except public paths."""
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         if path in PUBLIC_PATHS or path.startswith("/examples/"):
             return await call_next(request)
         token = request.cookies.get("session")
-        if not verify_session(token):
+        user = verify_session(token)
+        if not user:
             if path.startswith("/api/"):
                 return JSONResponse({"detail": "Unauthorized"}, 401)
             return RedirectResponse("/login", 302)
+        request.state.user = user
         return await call_next(request)
 
 
-app = FastAPI()
+# ─── App Init ────────────────────────────────────────────────
+# Middleware added in reverse order (last added = first executed)
+
+app = FastAPI(docs_url=None, redoc_url=None)  # disable swagger in prod
 app.add_middleware(AuthMiddleware)
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(LoggingMiddleware)
+app.add_middleware(RequestIdMiddleware)
 
 app.mount("/outputs", StaticFiles(directory=str(OUTPUT_DIR)), name="outputs")
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 app.mount("/examples", StaticFiles(directory=str(APP_DIR / "examples")), name="examples")
+
+
+# ─── Cached Static Data ─────────────────────────────────────
+# These rarely change — cache to avoid repeated dict construction
+
+VOICES = {
+    "th-TH-PremwadeeNeural": "ผู้หญิงไทย",
+    "th-TH-NiwatNeural": "ผู้ชายไทย",
+    "en-US-JennyNeural": "English Female",
+    "en-US-GuyNeural": "English Male",
+    "ja-JP-NanamiNeural": "日本語 Female",
+    "ko-KR-SunHiNeural": "한국어 Female",
+    "zh-CN-XiaoxiaoNeural": "中文 Female",
+}
+
+PRESETS = {
+    "draft": {"preprocess": "crop", "size": 256, "enhancer": "", "still": True, "expression_scale": 1.0, "label": "เร็ว (Draft)", "desc": "crop + 256px ไม่ enhance — เร็วสุด"},
+    "standard": {"preprocess": "full", "size": 256, "enhancer": "gfpgan", "still": True, "expression_scale": 1.0, "label": "มาตรฐาน", "desc": "full + GFPGAN — สมดุลคุณภาพ/เวลา"},
+    "hq": {"preprocess": "full", "size": 256, "enhancer": "gfpgan", "still": False, "expression_scale": 1.0, "label": "คุณภาพสูง", "desc": "full + GFPGAN + ขยับหัว"},
+    "marketing": {"preprocess": "full", "size": 256, "enhancer": "gfpgan", "still": True, "expression_scale": 1.2, "label": "การตลาด", "desc": "full + GFPGAN + expression เข้ม"},
+}
+
+@lru_cache(maxsize=1)
+def _cached_examples():
+    """Cache example image list — invalidated on server restart only."""
+    images = []
+    for ext in ("*.png", "*.jpg", "*.jpeg"):
+        for f in sorted(EXAMPLES_DIR.glob(ext)):
+            images.append({"name": f.stem, "filename": f.name, "url": f"/examples/source_image/{f.name}"})
+    return images
 
 VOICES = {
     "th-TH-PremwadeeNeural": "ผู้หญิงไทย",
@@ -244,10 +393,14 @@ def run_generation(job_id: str, params: dict):
     except subprocess.TimeoutExpired:
         job["status"] = "error"
         job["error"] = "Timeout: generation took too long (>15 min)"
+        log.error("job_timeout", job_id=job_id)
     except Exception as e:
         job["status"] = "error"
         job["error"] = str(e)
+        log.error("job_failed", job_id=job_id, error=str(e))
     finally:
+        elapsed = round(time.time() - job.get("created", time.time()), 1)
+        log.info("job_finished", job_id=job_id, status=job.get("status"), elapsed_s=elapsed)
         job["finished_at"] = time.time()
 
 
@@ -289,29 +442,42 @@ async def api_generate(
     output_name: str = Form(""),
 ):
     job_id = uuid.uuid4().hex[:8]
+    log.info("generate_request", job_id=job_id, preset=preset, has_image=bool(image and image.filename), has_audio=bool(audio and audio.filename))
 
-    # Resolve image
+    # Resolve image (with size + type validation)
+    ALLOWED_IMG = {".png", ".jpg", ".jpeg", ".webp"}
+    ALLOWED_AUDIO = {".mp3", ".wav", ".m4a", ".ogg"}
+
     if image and image.filename:
-        ext = Path(image.filename).suffix or ".png"
+        ext = Path(image.filename).suffix.lower()
+        if ext not in ALLOWED_IMG:
+            return JSONResponse({"detail": f"ไฟล์รูปต้องเป็น {', '.join(ALLOWED_IMG)}"}, 400)
+        content = await image.read()
+        if len(content) > MAX_UPLOAD_BYTES:
+            return JSONResponse({"detail": f"ไฟล์ใหญ่เกิน {MAX_UPLOAD_BYTES // 1024 // 1024} MB"}, 400)
         img_path = UPLOAD_DIR / f"{job_id}_img{ext}"
-        img_path.write_bytes(await image.read())
+        img_path.write_bytes(content)
         img_path_str = str(img_path)
     elif example_image:
-        safe_img = Path(example_image).name  # strip directory components
-        img_path = (EXAMPLES_DIR / safe_img).resolve()
-        if not str(img_path).startswith(str(EXAMPLES_DIR.resolve())) or not img_path.exists():
-            return JSONResponse({"detail": f"Image not found: {safe_img}"}, 400)
+        img_path = safe_path(EXAMPLES_DIR, example_image)
+        if not img_path or not img_path.exists():
+            return JSONResponse({"detail": "Image not found"}, 400)
         img_path_str = str(img_path)
     else:
         return JSONResponse({"detail": "No image provided"}, 400)
 
-    # Resolve audio
+    # Resolve audio (with size + type validation)
     tts_text = ""
     audio_path = str(UPLOAD_DIR / f"{job_id}_audio.mp3")
     if audio and audio.filename:
-        ext = Path(audio.filename).suffix or ".mp3"
+        ext = Path(audio.filename).suffix.lower()
+        if ext not in ALLOWED_AUDIO:
+            return JSONResponse({"detail": f"ไฟล์เสียงต้องเป็น {', '.join(ALLOWED_AUDIO)}"}, 400)
+        content = await audio.read()
+        if len(content) > MAX_UPLOAD_BYTES:
+            return JSONResponse({"detail": f"ไฟล์ใหญ่เกิน {MAX_UPLOAD_BYTES // 1024 // 1024} MB"}, 400)
         audio_path = str(UPLOAD_DIR / f"{job_id}_audio{ext}")
-        Path(audio_path).write_bytes(await audio.read())
+        Path(audio_path).write_bytes(content)
     elif text.strip():
         tts_text = text.strip()
     else:
@@ -410,11 +576,7 @@ async def api_delete(filename: str):
 
 @app.get("/api/examples")
 async def api_examples():
-    images = []
-    for ext in ("*.png", "*.jpg", "*.jpeg"):
-        for f in sorted(EXAMPLES_DIR.glob(ext)):
-            images.append({"name": f.stem, "filename": f.name, "url": f"/examples/source_image/{f.name}"})
-    return images
+    return _cached_examples()
 
 
 # ─── Uploads CRUD ────────────────────────────────────────────

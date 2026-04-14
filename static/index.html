@@ -732,6 +732,56 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
 <script>
 const Q=s=>document.querySelector(s), $=id=>document.getElementById(id);
 
+/* ── API Client — cached fetcher with auth redirect + error logging ── */
+const apiCache=new Map();
+const API_CACHE_TTL=60000; // 1 min for static endpoints
+
+const api={
+  /** Cached GET — uses in-memory cache for repeat requests within TTL */
+  async get(path,{cache=false}={}){
+    if(cache&&apiCache.has(path)){
+      const{data,ts}=apiCache.get(path);
+      if(Date.now()-ts<API_CACHE_TTL)return data;
+    }
+    const r=await fetch(path);
+    if(r.status===401){location.href='/login';throw new Error('Unauthorized');}
+    if(!r.ok)throw new Error((await r.json().catch(()=>({}))).detail||`HTTP ${r.status}`);
+    const data=await r.json();
+    if(cache)apiCache.set(path,{data,ts:Date.now()});
+    return data;
+  },
+  /** POST with FormData */
+  async post(path,body){
+    const r=await fetch(path,{method:'POST',body});
+    if(r.status===401){location.href='/login';throw new Error('Unauthorized');}
+    const data=await r.json();
+    if(!r.ok)throw new Error(data.detail||`HTTP ${r.status}`);
+    return data;
+  },
+  /** PATCH/PUT/DELETE */
+  async send(method,path,body){
+    const opts={method};
+    if(body)opts.body=body;
+    const r=await fetch(path,opts);
+    if(r.status===401){location.href='/login';throw new Error('Unauthorized');}
+    const data=await r.json();
+    if(!r.ok)throw new Error(data.detail||`HTTP ${r.status}`);
+    return data;
+  },
+  /** Invalidate cache for a path prefix */
+  invalidate(prefix){for(const k of apiCache.keys())if(k.startsWith(prefix))apiCache.delete(k);}
+};
+
+/* ── Centralized Error Logger — structured console + UI toast ── */
+const errLog={
+  handle(context,error){
+    const entry={ts:new Date().toISOString(),context,message:String(error),stack:error?.stack?.split('\\n')[1]?.trim()};
+    console.error('[SadTalker]',JSON.stringify(entry));
+    // Show to user
+    if($('ebox')){$('ebox').style.display='block';$('ebox').textContent=entry.message;}
+  }
+};
+
 /* ── Theme ── */
 function getTheme(){return localStorage.getItem('theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');}
 function applyTheme(t){
@@ -750,9 +800,9 @@ let preset='standard',selImg='',upImg=null,upAud=null,poll=null;
 /* ── Init ── */
 async function init(){
   // Check auth & show user
-  try{const me=await(await fetch('/api/me')).json();if(me.user)$('userLabel').textContent=me.user;}catch(e){location.href='/login';return;}
+  try{const me=await api.get('/api/me');if(me.user)$('userLabel').textContent=me.user;}catch(e){location.href='/login';return;}
 
-  const vc=await(await fetch('/api/voices')).json();
+  const vc=await api.get('/api/voices',{cache:true});
   const v1=$('voice'),v2=$('vChip');
   for(const[id,lb] of Object.entries(vc)){
     const o=new Option(lb,id,id.includes('Premwadee'),id.includes('Premwadee'));
@@ -760,7 +810,7 @@ async function init(){
   }
   v2.onchange=()=>v1.value=v2.value;
 
-  const pr=await(await fetch('/api/presets')).json();
+  const pr=await api.get('/api/presets',{cache:true});
   const ch=$('chips'),sb=$('sbPresets');
   for(const[k,p] of Object.entries(pr)){
     const c=document.createElement('button');
@@ -770,7 +820,7 @@ async function init(){
     li.onclick=()=>{pick(k);go('create');};sb.appendChild(li);
   }
 
-  const imgs=await(await fetch('/api/examples')).json();
+  const imgs=await api.get('/api/examples',{cache:true});
   const ig=$('igrid');
   for(const i of imgs){
     const el=document.createElement('img');
@@ -858,11 +908,9 @@ async function generate(){
   fd.append('output_name',$('outName').value);
 
   try{
-    const r=await fetch('/api/generate',{method:'POST',body:fd});
-    const d=await r.json();
-    if(!r.ok){err(d.detail||'Error');return;}
+    const d=await api.post('/api/generate',fd);
     doPoll(d.job_id);
-  }catch(e){err('เชื่อมต่อไม่ได้: '+e.message);}
+  }catch(e){errLog.handle('generate',e);err(e.message);}
 }
 
 const STP={starting:'เริ่มต้น...',tts:'แปลงข้อความเป็นเสียง...',inference:'กำลัง render (5-10 นาที)...'};
@@ -906,7 +954,7 @@ function esc(s){const d=document.createElement('div');d.textContent=s;return d.i
 /* ── History ── */
 async function loadH(){
   let items;
-  try{items=await(await fetch('/api/history')).json();}catch(e){items=[];}
+  try{items=await api.get('/api/history');}catch(e){errLog.handle('loadHistory',e);items=[];}
   const g=$('hGrid');g.innerHTML='';
   $('hEmpty').style.display=items.length?'none':'block';
   for(const it of items){
@@ -928,13 +976,12 @@ async function renH(fn){
   const n=prompt('ตั้งชื่อใหม่:',fn);
   if(!n||n===fn)return;
   const fd=new FormData();fd.append('new_name',n);
-  const r=await fetch('/api/history/'+encodeURIComponent(fn),{method:'PATCH',body:fd});
-  if(r.ok)loadH();else alert('เปลี่ยนชื่อไม่สำเร็จ');
+  try{await api.send('PATCH','/api/history/'+encodeURIComponent(fn),fd);api.invalidate('/api/history');loadH();}
+  catch(e){errLog.handle('renameVideo',e);alert(e.message);}
 }
 async function delH(fn,b){
   if(!confirm('ลบวิดีโอนี้?'))return;
-  const r=await fetch('/api/history/'+encodeURIComponent(fn),{method:'DELETE'});
-  if(!r.ok)return;
+  try{await api.send('DELETE','/api/history/'+encodeURIComponent(fn));}catch(e){errLog.handle('deleteVideo',e);return;}
   b.closest('.hi').remove();
   if(!$('hGrid').children.length)$('hEmpty').style.display='block';
 }
@@ -942,7 +989,7 @@ async function delH(fn,b){
 /* ── Uploads ── */
 async function loadUploads(){
   let items;
-  try{items=await(await fetch('/api/uploads')).json();}catch(e){items=[];}
+  try{items=await api.get('/api/uploads');}catch(e){errLog.handle('loadUploads',e);items=[];}
   const g=$('uGrid');g.innerHTML='';
   $('uEmpty').style.display=items.length?'none':'block';
   for(const it of items){
@@ -960,8 +1007,7 @@ async function loadUploads(){
 function useUpload(fn,url){selI(fn,url);go('create');}
 async function delUpload(fn,b){
   if(!confirm('ลบรูปนี้?'))return;
-  const r=await fetch('/api/uploads/'+encodeURIComponent(fn),{method:'DELETE'});
-  if(!r.ok)return;
+  try{await api.send('DELETE','/api/uploads/'+encodeURIComponent(fn));}catch(e){errLog.handle('deleteUpload',e);return;}
   b.closest('.hi').remove();
   if(!$('uGrid').children.length)$('uEmpty').style.display='block';
 }
@@ -969,7 +1015,7 @@ async function delUpload(fn,b){
 /* ── Custom Presets ── */
 async function loadCustomPresets(){
   let cp;
-  try{cp=await(await fetch('/api/custom-presets')).json();}catch(e){cp={};}
+  try{cp=await api.get('/api/custom-presets');}catch(e){errLog.handle('loadPresets',e);cp={};}
   const list=$('cpList');list.innerHTML='';
   const keys=Object.keys(cp);
   $('cpEmpty').style.display=keys.length?'none':'block';
@@ -991,14 +1037,15 @@ async function createPreset(){
   fd.append('preprocess',$('cpPreproc').value);fd.append('enhancer',$('cpEnh').value);
   fd.append('expression_scale',$('cpExpr').value);
   fd.append('still',$('cpStill').classList.contains('on')?'true':'false');
-  const r=await fetch('/api/custom-presets',{method:'POST',body:fd});
-  if(r.ok){$('cpKey').value='';$('cpLabel').value='';$('cpDesc').value='';loadCustomPresets();alert('บันทึกแล้ว');}
-  else{const d=await r.json();alert(d.detail||'Error');}
+  try{await api.post('/api/custom-presets',fd);api.invalidate('/api/presets');api.invalidate('/api/custom');
+    $('cpKey').value='';$('cpLabel').value='';$('cpDesc').value='';loadCustomPresets();alert('บันทึกแล้ว');
+  }catch(e){errLog.handle('createPreset',e);alert(e.message);}
 }
 function usePreset(k){pick(k);go('create');}
 async function delPreset(k){
   if(!confirm('ลบ preset นี้?'))return;
-  await fetch('/api/custom-presets/'+encodeURIComponent(k),{method:'DELETE'});
+  try{await api.send('DELETE','/api/custom-presets/'+encodeURIComponent(k));api.invalidate('/api/presets');api.invalidate('/api/custom');}
+  catch(e){errLog.handle('deletePreset',e);}
   loadCustomPresets();
 }
 
