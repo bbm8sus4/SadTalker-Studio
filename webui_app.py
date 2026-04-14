@@ -230,8 +230,12 @@ def save_flags(data: dict):
 
 ANALYTICS_FILE = APP_DIR / "analytics.log"
 
-def track(event: str, user: str = "", props: dict | None = None):
-    """Fire structured telemetry event."""
+MAX_TEXT_LENGTH = 5000  # TTS text hard cap
+
+def track(event: str, user: str = "", props: dict | None = None, consent_ok: bool = True):
+    """Fire telemetry event. Skips if consent_ok=False (PDPA compliance)."""
+    if not consent_ok:
+        return
     entry = {
         "ts": datetime.utcnow().isoformat() + "Z",
         "event": event,
@@ -597,11 +601,21 @@ async def api_generate(
     input_roll: str = Form(""),
     output_name: str = Form(""),
 ):
-    # RBAC check
+    # RBAC + feature flag checks
     user = getattr(request.state, "user", "")
     role = getattr(request.state, "role", "viewer")
     if not check_perm(role, "generate"):
         return JSONResponse({"detail": "ไม่มีสิทธิ์สร้างวิดีโอ"}, 403)
+    fl = load_flags()
+    if not fl.get("tts_enabled", True) and text.strip() and not (audio and audio.filename):
+        return JSONResponse({"detail": "TTS ถูกปิดใช้งานชั่วคราว"}, 503)
+    if not fl.get("audio_upload_enabled", True) and audio and audio.filename:
+        return JSONResponse({"detail": "อัปโหลดเสียงถูกปิดใช้งานชั่วคราว"}, 503)
+    # Concurrent job limit
+    running = sum(1 for j in jobs.values() if j.get("status") == "running")
+    max_jobs = fl.get("max_concurrent_jobs", 3)
+    if running >= max_jobs:
+        return JSONResponse({"detail": f"ระบบกำลังประมวลผล {running} งาน กรุณารอสักครู่"}, 429)
 
     job_id = uuid.uuid4().hex[:8]
     log.info("generate_request", job_id=job_id, user=user, preset=preset)
@@ -643,6 +657,8 @@ async def api_generate(
         audio_path = str(UPLOAD_DIR / f"{job_id}_audio{ext}")
         Path(audio_path).write_bytes(content)
     elif text.strip():
+        if len(text.strip()) > MAX_TEXT_LENGTH:
+            return JSONResponse({"detail": f"ข้อความยาวเกิน {MAX_TEXT_LENGTH} ตัวอักษร"}, 400)
         tts_text = text.strip()
     else:
         return JSONResponse({"detail": "No text or audio provided"}, 400)
@@ -689,7 +705,7 @@ async def api_generate(
     params["input_pitch"] = parse_ints(input_pitch)
     params["input_roll"] = parse_ints(input_roll)
 
-    jobs[job_id] = {"status": "running", "step": "starting", "progress": 0, "created": time.time()}
+    jobs[job_id] = {"status": "running", "step": "starting", "progress": 0, "created": time.time(), "owner": user}
     thread = threading.Thread(target=run_generation, args=(job_id, params), daemon=True)
     thread.start()
 
@@ -697,12 +713,17 @@ async def api_generate(
 
 
 @app.get("/api/status/{job_id}")
-async def api_status(job_id: str):
+async def api_status(request: Request, job_id: str):
     cleanup_old_jobs()
     job = jobs.get(job_id)
     if not job:
         return JSONResponse({"detail": "Job not found"}, 404)
-    # Auto-detect stuck jobs (running > 20 min with no progress)
+    # Ownership check — only owner or admin can see job status
+    user = getattr(request.state, "user", "")
+    role = getattr(request.state, "role", "")
+    if job.get("owner") and job["owner"] != user and role != "admin":
+        return JSONResponse({"detail": "Job not found"}, 404)
+    # Auto-detect stuck jobs (running > 20 min)
     if job.get("status") == "running" and time.time() - job.get("created", 0) > 1200:
         job["status"] = "error"
         job["error"] = "Job timed out after 20 minutes"
@@ -710,7 +731,9 @@ async def api_status(job_id: str):
 
 
 @app.get("/api/history")
-async def api_history():
+async def api_history(request: Request):
+    if not check_perm(getattr(request.state, "role", ""), "history"):
+        return JSONResponse({"detail": "ไม่มีสิทธิ์ดูประวัติ"}, 403)
     items = []
     for meta_file in sorted(OUTPUT_DIR.glob("*.json"), key=lambda f: f.stat().st_mtime, reverse=True):
         try:
@@ -748,7 +771,9 @@ async def api_examples():
 # ─── Uploads CRUD ────────────────────────────────────────────
 
 @app.get("/api/uploads")
-async def api_uploads():
+async def api_uploads(request: Request):
+    if not check_perm(getattr(request.state, "role", ""), "uploads"):
+        return JSONResponse({"detail": "ไม่มีสิทธิ์ดูรูป"}, 403)
     """List all user-uploaded images."""
     items = []
     for ext in ("*.png", "*.jpg", "*.jpeg", "*.webp"):
@@ -1008,12 +1033,17 @@ async def api_audit(request: Request):
 
 @app.post("/api/track")
 async def api_track(request: Request):
-    """Receive frontend telemetry events."""
-    body = await request.json()
+    """Receive frontend telemetry — respects consent flag from client."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"detail": "Invalid JSON"}, 400)
+    consent_ok = body.get("consent_analytics", False)
     track(
         event=body.get("event", "unknown"),
         user=getattr(request.state, "user", ""),
         props=body.get("props", {}),
+        consent_ok=consent_ok,
     )
     return {"ok": True}
 

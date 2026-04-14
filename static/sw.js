@@ -114,25 +114,42 @@ async function syncQueue() {
     req.onsuccess = () => resolve(req.result);
   });
 
+  let synced = 0, failed = 0;
+
   for (let i = 0; i < all.length; i++) {
     const item = all[i];
+    // Skip items older than 1 hour (stale queue cleanup)
+    if (item.timestamp && Date.now() - item.timestamp > 3600000) {
+      const delTx = db.transaction('queue', 'readwrite');
+      delTx.objectStore('queue').delete(keys[i]);
+      continue;
+    }
     try {
-      await fetch(item.url, {
+      const resp = await fetch(item.url, {
         method: item.method,
         headers: item.headers,
         body: item.method !== 'GET' ? item.body : undefined,
+        credentials: 'include', // forward session cookie for auth
       });
-      // Success: remove from queue
-      const delTx = db.transaction('queue', 'readwrite');
-      delTx.objectStore('queue').delete(keys[i]);
+      if (resp.ok || resp.status === 401) {
+        // Success or auth rejected — remove from queue either way
+        const delTx = db.transaction('queue', 'readwrite');
+        delTx.objectStore('queue').delete(keys[i]);
+        if (resp.ok) synced++;
+        else failed++;
+      } else {
+        failed++; // Server error — keep in queue, try next item
+      }
     } catch (e) {
-      break; // Still offline, stop trying
+      failed++;
+      // Network error on THIS item — try remaining items instead of stopping
+      continue;
     }
   }
 
-  // Notify all clients that sync completed
+  // Notify clients with result details
   const clients = await self.clients.matchAll();
-  clients.forEach(c => c.postMessage({ type: 'sync-complete' }));
+  clients.forEach(c => c.postMessage({ type: 'sync-complete', synced, failed }));
 }
 
 // ── Background Sync (auto-retry when online) ──

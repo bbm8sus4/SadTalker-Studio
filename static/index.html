@@ -923,10 +923,12 @@ function hasPerm(p){return currentPerms.has(p);}
 /* ── Feature Flags — cached from /api/flags ── */
 let flags={};
 
-/* ── Analytics — fire-and-forget telemetry ── */
+/* ── Analytics — consent-gated telemetry (PDPA compliant) ── */
 function trackEvent(event,props={}){
+  const c=loadConsent();
+  if(!c.analytics)return; // respect user consent
   fetch('/api/track',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({event,props})}).catch(()=>{});
+    body:JSON.stringify({event,props,consent_analytics:true})}).catch(()=>{});
 }
 
 /* ── API Client — cached fetcher with auth redirect + error logging ── */
@@ -1056,37 +1058,41 @@ async function init(){
   // Feature flags
   try{flags=await api.get('/api/flags',{cache:true});}catch(e){flags={};}
 
-  // RBAC: hide UI elements based on permissions
+  // RBAC: hide UI based on role
   if(!hasPerm('generate')){$('goBtn').style.display='none';}
   if(!hasPerm('presets.create')){const cpForm=Q('#pg-presets .card');if(cpForm)cpForm.style.display='none';}
 
+  // Feature flags: disable UI elements based on flags
+  if(!flags.tts_enabled){const am=$('aMode');if(am){am.value='file';am.disabled=true;togAudio();}}
+  if(!flags.audio_upload_enabled){const am=$('aMode');if(am){for(const o of am.options)if(o.value==='file')o.disabled=true;}}
+
   trackEvent('page_load',{role:currentRole});
 
-  const vc=await api.get('/api/voices',{cache:true});
-  const v1=$('voice'),v2=$('vChip');
-  for(const[id,lb] of Object.entries(vc)){
-    const o=new Option(lb,id,id.includes('Premwadee'),id.includes('Premwadee'));
-    v1.add(o);v2.add(o.cloneNode(true));
-  }
-  v2.onchange=()=>v1.value=v2.value;
+  // Load voices, presets, examples — each wrapped in try/catch so one failure doesn't break all
+  try{
+    const vc=await api.get('/api/voices',{cache:true});
+    const v1=$('voice'),v2=$('vChip');
+    if(v1&&v2)for(const[id,lb] of Object.entries(vc)){
+      const o=new Option(lb,id,id.includes('Premwadee'),id.includes('Premwadee'));
+      v1.add(o);v2.add(o.cloneNode(true));
+    }
+    if(v2)v2.onchange=()=>v1.value=v2.value;
+  }catch(e){errLog.handle('loadVoices',e);}
 
-  const pr=await api.get('/api/presets',{cache:true});
-  const ch=$('chips'),sb=$('sbPresets');
-  for(const[k,p] of Object.entries(pr)){
-    const c=document.createElement('button');
-    c.className='chip'+(k===preset?' on':'');c.dataset.k=k;c.textContent=p.label;
-    c.onclick=()=>pick(k);ch.appendChild(c);
-    const li=document.createElement('li');li.dataset.k=k;li.textContent=p.label;
-    li.onclick=()=>{pick(k);go('create');};sb.appendChild(li);
-  }
+  try{
+    const pr=await api.get('/api/presets',{cache:true});
+    buildPresetUI(pr);
+  }catch(e){errLog.handle('loadPresets',e);}
 
-  const imgs=await api.get('/api/examples',{cache:true});
-  const ig=$('igrid');
-  for(const i of imgs){
-    const el=document.createElement('img');
-    el.src=i.url;el.title=i.name;el.dataset.f=i.filename;el.loading='lazy';
-    el.onclick=()=>selI(i.filename,i.url);ig.appendChild(el);
-  }
+  try{
+    const imgs=await api.get('/api/examples',{cache:true});
+    const ig=$('igrid');
+    if(ig)for(const i of imgs){
+      const el=document.createElement('img');
+      el.src=i.url;el.title=i.name;el.dataset.f=i.filename;el.loading='lazy';
+      el.onclick=()=>selI(i.filename,i.url);ig.appendChild(el);
+    }
+  }catch(e){errLog.handle('loadExamples',e);}
 
   $('pChip').onchange=function(){pick(this.value);};
   $('text').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();generate();}});
@@ -1111,6 +1117,20 @@ function go(p){
   if(p==='uploads')loadUploads();
   if(p==='presets')loadCustomPresets();
   history.replaceState(null,'','#'+p);
+}
+function buildPresetUI(pr){
+  const ch=$('chips'),sb=$('sbPresets');
+  if(ch)ch.innerHTML='';if(sb)sb.innerHTML='';
+  for(const[k,p] of Object.entries(pr)){
+    const c=document.createElement('button');
+    c.className='chip'+(k===preset?' on':'');c.dataset.k=k;c.textContent=p.label;
+    c.onclick=()=>pick(k);if(ch)ch.appendChild(c);
+    const li=document.createElement('li');li.dataset.k=k;li.textContent=p.label;
+    li.onclick=()=>{pick(k);go('create');};if(sb)sb.appendChild(li);
+  }
+}
+async function refreshPresets(){
+  try{api.invalidate('/api/presets');const pr=await api.get('/api/presets',{cache:true});buildPresetUI(pr);}catch(e){}
 }
 function pick(k){
   preset=k;
@@ -1314,7 +1334,7 @@ async function createPreset(){
   fd.append('expression_scale',$('cpExpr').value);
   fd.append('still',$('cpStill').classList.contains('on')?'true':'false');
   try{await api.post('/api/custom-presets',fd);api.invalidate('/api/presets');api.invalidate('/api/custom');
-    $('cpKey').value='';$('cpLabel').value='';$('cpDesc').value='';loadCustomPresets();toast('บันทึก preset แล้ว!','success');
+    $('cpKey').value='';$('cpLabel').value='';$('cpDesc').value='';loadCustomPresets();refreshPresets();toast('บันทึก preset แล้ว!','success');
   }catch(e){toast(errLog.handle('createPreset',e),'error');}
 }
 function usePreset(k){pick(k);go('create');}
@@ -1323,7 +1343,7 @@ async function delPreset(k){
   if(!confirmed)return;
   try{await api.send('DELETE','/api/custom-presets/'+encodeURIComponent(k));api.invalidate('/api/presets');api.invalidate('/api/custom');}
   catch(e){toast(errLog.handle('deletePreset',e),'error');}
-  loadCustomPresets();
+  loadCustomPresets();refreshPresets();
 }
 
 /* ════════════════════════════════════════════
@@ -1404,8 +1424,8 @@ function formatTHB(satang){
    Granular consent stored in localStorage.
    ════════════════════════════════════════════ */
 function loadConsent(){
-  try{return JSON.parse(localStorage.getItem('st_consent'))||{essential:true,analytics:false,personalization:true};}
-  catch(e){return{essential:true,analytics:false,personalization:true};}
+  try{return JSON.parse(localStorage.getItem('st_consent'))||{essential:true,analytics:false,personalization:false};}
+  catch(e){return{essential:true,analytics:false,personalization:false};}
 }
 function saveConsentData(c){localStorage.setItem('st_consent',JSON.stringify(c));}
 
