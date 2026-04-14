@@ -395,6 +395,33 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
 .ebox .ebox-title{font-weight:700;margin-bottom:4px;}
 .ebox .ebox-hint{font-size:.8rem;color:var(--muted);margin-top:6px;}
 
+/* ── Confirm panel (pre-generate summary) ── */
+.confirm-ov{
+  display:none;position:fixed;inset:0;z-index:600;
+  background:var(--glass);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  justify-content:center;align-items:center;padding:24px;
+}
+.confirm-ov.show{display:flex;}
+.confirm-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:16px;
+  padding:28px 32px;max-width:480px;width:100%;box-shadow:0 16px 64px rgba(0,0,0,.12);
+  transition:background .3s;
+}
+.confirm-card h3{font-size:1rem;font-weight:700;margin-bottom:16px;}
+.confirm-table{width:100%;border-collapse:collapse;font-size:.84rem;}
+.confirm-table td{padding:7px 0;border-bottom:1px solid var(--border);}
+.confirm-table td:first-child{color:var(--muted);width:120px;font-weight:500;}
+.confirm-table td:last-child{color:var(--text);font-weight:600;}
+.confirm-table tr:last-child td{border-bottom:none;}
+.confirm-est{
+  margin-top:16px;padding:12px 16px;border-radius:10px;
+  background:var(--accent-s);text-align:center;
+}
+.confirm-est .est-time{font-size:1.3rem;font-weight:700;color:var(--accent);}
+.confirm-est .est-label{font-size:.78rem;color:var(--text2);margin-top:2px;}
+.confirm-btns{display:flex;gap:10px;margin-top:18px;}
+.confirm-btns .btn{flex:1;justify-content:center;padding:11px;font-size:.9rem;}
+
 /* ═══════════════════════════════════════════
    RESPONSIVE
    ═══════════════════════════════════════════ */
@@ -896,6 +923,22 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
 </div><!-- /main-wrap -->
 </div><!-- /layout -->
 
+<!-- Confirm overlay (shown before generating) -->
+<div class="confirm-ov" id="confirmOv">
+  <div class="confirm-card">
+    <h3>ยืนยันการสร้างวิดีโอ</h3>
+    <table class="confirm-table" id="confirmTable"></table>
+    <div class="confirm-est">
+      <div class="est-time" id="estTime">~3 นาที</div>
+      <div class="est-label">เวลาโดยประมาณ (CPU)</div>
+    </div>
+    <div class="confirm-btns">
+      <button class="btn btn-o" onclick="closeConfirm()">ยกเลิก</button>
+      <button class="btn btn-g" id="confirmGenBtn" onclick="confirmGenerate()">สร้างเลย</button>
+    </div>
+  </div>
+</div>
+
 <!-- Result overlay (only shown on explicit "ดูวิดีโอ" click) -->
 <div class="ov" id="ovRes"><div class="ocard">
   <h3 style="color:var(--green);">สำเร็จ!</h3>
@@ -1180,14 +1223,63 @@ function onAud(){
 
 /* ── Generate ── */
 async function generate(){
-  // RBAC client-side guard
-  if(!hasPerm('generate')){toast('บัญชีนี้ไม่มีสิทธิ์สร้างวิดีโอ ติดต่อผู้ดูแลระบบ','warn');return;}
+  // Validate
+  if(!hasPerm('generate')){toast('บัญชีนี้ไม่มีสิทธิ์สร้างวิดีโอ','warn');return;}
   const mode=$('aMode').value,txt=$('text').value.trim();
   if(mode==='tts'&&!txt){toast('พิมพ์ข้อความที่ต้องการให้พูดก่อนนะ','warn');return;}
   if(mode==='file'&&!upAud){toast('อัปโหลดไฟล์เสียงก่อนนะ','warn');return;}
   if(!selImg&&!upImg){toast('เลือกรูปหน้าก่อน โดยอัปโหลดหรือเลือกจากตัวอย่าง','warn');return;}
-  trackEvent('generate_click',{preset,mode});
 
+  // Show confirmation panel with estimation
+  showConfirm(mode, txt);
+}
+
+function showConfirm(mode, txt){
+  const p=PRESETS[preset]||PRESETS['standard'];
+  const presetLabel=p.label||preset;
+  const hasEnhancer=($('enh').value||p.enhancer||'')!=='none'&&($('enh').value||p.enhancer||'')!=='';
+  const preproc=$('preproc').value||p.preprocess||'full';
+  const voiceLabel=$('voice').selectedOptions[0]?.text||'ไทย';
+  const rateLabel=$('rate').value||'+0%';
+  const imgName=selImg||(upImg?.name||'');
+
+  // Estimate audio duration from text length (Thai ~6 chars/sec at normal speed)
+  let estAudioSec=5;
+  if(mode==='tts'&&txt){
+    const charsPerSec=6;
+    const rateMap={'-30%':4,'-15%':5,'+0%':6,'+15%':7,'+30%':8};
+    const cps=rateMap[rateLabel]||6;
+    estAudioSec=Math.max(2,Math.round(txt.length/cps));
+  }else if(upAud){
+    estAudioSec=10; // estimate for uploaded audio
+  }
+  const estFrames=estAudioSec*25;
+
+  // Estimate render time (CPU M-series: ~1.5s/frame draft, ~3s/frame with enhancer)
+  const secPerFrame=hasEnhancer?3:1.5;
+  const estRenderSec=Math.round(estFrames*secPerFrame);
+  const estTotalMin=Math.max(1,Math.round((estRenderSec+10)/60));
+
+  const tbl=$('confirmTable');
+  tbl.innerHTML=`
+    <tr><td>รูปภาพ</td><td>${esc(imgName)}</td></tr>
+    <tr><td>เสียง</td><td>${mode==='tts'?esc(voiceLabel)+' ('+esc(rateLabel)+')':'ไฟล์เสียง: '+esc(upAud?.name||'')}</td></tr>
+    <tr><td>ข้อความ</td><td>${mode==='tts'?esc(txt.substring(0,60))+(txt.length>60?'...':''):'(อัปโหลดเสียง)'}</td></tr>
+    <tr><td>Preset</td><td>${esc(presetLabel)}</td></tr>
+    <tr><td>Preprocess</td><td>${esc(preproc)}</td></tr>
+    <tr><td>Face Enhance</td><td>${hasEnhancer?'เปิด (GFPGAN)':'ปิด — เร็วขึ้น 2 เท่า'}</td></tr>
+    <tr><td>ความยาวเสียง</td><td>~${estAudioSec} วินาที</td></tr>
+    <tr><td>จำนวน Frame</td><td>~${estFrames} frames (25 fps)</td></tr>`;
+  $('estTime').textContent='~'+estTotalMin+' นาที';
+  $('confirmOv').classList.add('show');
+}
+
+function closeConfirm(){$('confirmOv').classList.remove('show');}
+
+async function confirmGenerate(){
+  $('confirmOv').classList.remove('show');
+  const mode=$('aMode').value,txt=$('text').value.trim();
+  trackEvent('generate_click',{preset,mode});
   $('ebox').style.display='none';
 
   const fd=new FormData();
