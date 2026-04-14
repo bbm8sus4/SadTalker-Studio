@@ -288,16 +288,16 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
   justify-content:center;align-items:center;padding:24px;
 }
 .ov.show{display:flex;}
-/* ── Job tracker bar (non-blocking, stacks multiple jobs) ── */
+/* ── Job tracker bar (inline in content flow, not fixed overlay) ── */
 .job-tracker{
-  position:fixed;top:var(--topbar);right:0;left:var(--sidebar);z-index:400;
-  display:flex;flex-direction:column;gap:0;pointer-events:none;
+  display:flex;flex-direction:column;gap:0;
 }
+.job-tracker:empty{display:none;}
 .job-bar{
-  pointer-events:auto;display:flex;align-items:center;gap:12px;
-  padding:10px 20px;background:var(--surface);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:12px;
+  padding:10px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);
   font-size:.84rem;animation:jbIn .3s ease-out;transition:opacity .3s;
-  box-shadow:0 2px 8px rgba(0,0,0,.06);
+  margin-bottom:8px;
 }
 .job-bar .jb-name{font-weight:600;color:var(--text);min-width:80px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;}
 .job-bar .jb-progress{flex:1;height:5px;background:var(--bg2);border-radius:3px;overflow:hidden;min-width:100px;}
@@ -409,7 +409,6 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
   .hg{grid-template-columns:1fr;}
   .ig{grid-template-columns:repeat(auto-fill,minmax(58px,1fr));}
   .ocard{padding:24px 20px;}
-  .job-tracker{left:0;}
   .job-bar .jb-name{max-width:80px;}
   .job-bar .jb-step{display:none;}
 }
@@ -498,6 +497,7 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
 
     <!-- PAGE: CREATE -->
     <div class="pg on" id="pg-create">
+      <div class="job-tracker" id="jobTracker"></div>
       <div class="presets">
         <span class="lbl">Preset</span>
         <div id="chips"></div>
@@ -895,9 +895,6 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
   </div>
 </div><!-- /main-wrap -->
 </div><!-- /layout -->
-
-<!-- Job tracker (non-blocking progress bars) -->
-<div class="job-tracker" id="jobTracker"></div>
 
 <!-- Result overlay (only shown on explicit "ดูวิดีโอ" click) -->
 <div class="ov" id="ovRes"><div class="ocard">
