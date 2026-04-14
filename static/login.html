@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="th" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Login — SadTalker Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root,[data-theme="light"]{
+  --bg:#F5F5F7;--surface:#FFF;--border:#E2E2E6;
+  --text:#1D1D1F;--text2:#6E6E73;--muted:#AEAEB2;
+  --accent:#0071E3;--accent-h:#0062CC;--accent-s:rgba(0,113,227,.08);
+  --red:#FF453A;--red-s:rgba(255,69,58,.1);
+}
+[data-theme="dark"]{
+  --bg:#000;--surface:#1C1C1E;--border:#38383A;
+  --text:#F5F5F7;--text2:#A1A1A6;--muted:#636366;
+  --accent:#0A84FF;--accent-h:#409CFF;--accent-s:rgba(10,132,255,.15);
+  --red:#FF453A;--red-s:rgba(255,69,58,.15);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  font-family:'Noto Sans Thai',system-ui,sans-serif;
+  background:var(--bg);color:var(--text);
+  display:flex;justify-content:center;align-items:center;
+  transition:background .3s,color .3s;
+}
+.card{
+  background:var(--surface);border:1px solid var(--border);border-radius:16px;
+  padding:40px 36px;width:100%;max-width:380px;box-shadow:0 4px 24px rgba(0,0,0,.06);
+  transition:background .3s,border .3s;
+}
+.logo{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:28px;}
+.logo-icon{
+  width:40px;height:40px;border-radius:10px;background:var(--accent);
+  display:grid;place-items:center;color:#fff;font-weight:800;font-size:.95rem;
+}
+.logo-text{font-weight:700;font-size:1.15rem;}
+h2{text-align:center;font-size:1rem;font-weight:500;color:var(--text2);margin-bottom:24px;}
+.field{margin-bottom:16px;}
+.field label{display:block;font-size:.78rem;color:var(--text2);margin-bottom:5px;font-weight:500;}
+.field input{
+  width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--border);
+  background:var(--surface);color:var(--text);font-size:.9rem;font-family:inherit;
+  transition:.15s;
+}
+.field input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-s);}
+.btn{
+  width:100%;padding:12px;border:none;border-radius:10px;
+  background:var(--accent);color:#fff;font-size:.92rem;font-weight:600;
+  cursor:pointer;font-family:inherit;transition:.15s;margin-top:8px;
+}
+.btn:hover{background:var(--accent-h);}
+.err{
+  text-align:center;padding:10px;border-radius:8px;
+  background:var(--red-s);color:var(--red);font-size:.84rem;margin-bottom:16px;
+}
+.theme-toggle{
+  position:fixed;top:16px;right:16px;
+  background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  padding:6px 10px;cursor:pointer;color:var(--text2);font-size:.78rem;
+  display:flex;align-items:center;gap:5px;font-family:inherit;transition:.15s;
+}
+.theme-toggle:hover{background:var(--accent-s);}
+.theme-toggle svg{width:14px;height:14px;}
+.footer{text-align:center;margin-top:20px;font-size:.72rem;color:var(--muted);}
+</style>
+</head>
+<body>
+
+<button class="theme-toggle" onclick="toggleTheme()">
+  <svg id="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+  <span id="tl">Dark</span>
+</button>
+
+<div class="card">
+  <div class="logo">
+    <div class="logo-icon">ST</div>
+    <div class="logo-text">SadTalker Studio</div>
+  </div>
+  <h2>เข้าสู่ระบบ</h2>
+  <!--ERROR-->
+  <form method="POST" action="/login">
+    <div class="field">
+      <label for="username">ชื่อผู้ใช้</label>
+      <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+    </div>
+    <div class="field">
+      <label for="password">รหัสผ่าน</label>
+      <input type="password" id="password" name="password" autocomplete="current-password" required>
+    </div>
+    <button type="submit" class="btn">เข้าสู่ระบบ</button>
+  </form>
+  <div class="footer">SadTalker Studio v1.0</div>
+</div>
+
+<script>
+function getTheme(){return localStorage.getItem('theme')||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');}
+function applyTheme(t){
+  document.documentElement.dataset.theme=t;
+  document.getElementById('tl').textContent=t==='dark'?'Light':'Dark';
+  document.getElementById('ti').innerHTML=t==='dark'
+    ?'<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>'
+    :'<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+}
+function toggleTheme(){const t=getTheme()==='dark'?'light':'dark';localStorage.setItem('theme',t);applyTheme(t);}
+applyTheme(getTheme());
+</script>
+</body>
+</html>

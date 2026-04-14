@@ -356,12 +356,18 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
   <div class="sb-label">พรีเซ็ต</div>
   <ul class="sb-menu" id="sbPresets"></ul>
 
-  <div class="sb-bottom">
-    <span class="sb-ver">v1.0</span>
-    <button class="theme-btn" onclick="toggleTheme()">
-      <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-      <span id="themeLbl">Dark</span>
-    </button>
+  <div class="sb-bottom" style="flex-direction:column;gap:8px;align-items:stretch;">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <span class="sb-ver" id="userLabel">v1.0</span>
+      <button class="theme-btn" onclick="toggleTheme()">
+        <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <span id="themeLbl">Dark</span>
+      </button>
+    </div>
+    <a href="/logout" class="theme-btn" style="text-decoration:none;justify-content:center;width:100%;font-size:.78rem;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:14px;height:14px;"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      ออกจากระบบ
+    </a>
   </div>
 </aside>
 
@@ -555,6 +561,9 @@ let preset='standard',selImg='',upImg=null,upAud=null,poll=null;
 
 /* ── Init ── */
 async function init(){
+  // Check auth & show user
+  try{const me=await(await fetch('/api/me')).json();if(me.user)$('userLabel').textContent=me.user;}catch(e){location.href='/login';return;}
+
   const vc=await(await fetch('/api/voices')).json();
   const v1=$('voice'),v2=$('vChip');
   for(const[id,lb] of Object.entries(vc)){

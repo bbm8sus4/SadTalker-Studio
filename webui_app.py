@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SadTalker Web UI — Full-featured browser interface."""
+"""SadTalker Web UI — Full-featured browser interface with authentication."""
 
 import os
 import subprocess
@@ -7,15 +7,17 @@ import uuid
 import json
 import time
 import shutil
+import hashlib
+import hmac
 import threading
+import re
 from pathlib import Path
 from datetime import datetime
 
-import re
-
-from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi import FastAPI, UploadFile, File, Form, Request, Response, Cookie
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 APP_DIR = Path(__file__).parent
 UPLOAD_DIR = APP_DIR / "uploads"
@@ -25,10 +27,54 @@ EXAMPLES_AUDIO_DIR = APP_DIR / "examples" / "driven_audio"
 UPLOAD_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 
+# ─── Auth Config ─────────────────────────────────────────────
+# Set via environment variables or .env file
+ADMIN_USER = os.environ.get("ST_USER", "admin")
+ADMIN_PASS = os.environ.get("ST_PASS", "sadtalker")
+SECRET_KEY = os.environ.get("ST_SECRET", uuid.uuid4().hex)
+SESSION_MAX_AGE = 86400 * 7  # 7 days
+
+serializer = URLSafeTimedSerializer(SECRET_KEY)
+
 # Track running jobs
 jobs: dict = {}
 
+
+# ─── Auth Helpers ────────────────────────────────────────────
+
+def create_session(username: str) -> str:
+    return serializer.dumps({"user": username})
+
+
+def verify_session(token: str | None) -> str | None:
+    if not token:
+        return None
+    try:
+        data = serializer.loads(token, max_age=SESSION_MAX_AGE)
+        return data.get("user")
+    except (BadSignature, SignatureExpired):
+        return None
+
+
+from starlette.middleware.base import BaseHTTPMiddleware
+
+PUBLIC_PATHS = {"/login", "/favicon.ico"}
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if path in PUBLIC_PATHS or path.startswith("/examples/"):
+            return await call_next(request)
+        token = request.cookies.get("session")
+        if not verify_session(token):
+            if path.startswith("/api/"):
+                return JSONResponse({"detail": "Unauthorized"}, 401)
+            return RedirectResponse("/login", 302)
+        return await call_next(request)
+
+
 app = FastAPI()
+app.add_middleware(AuthMiddleware)
 
 app.mount("/outputs", StaticFiles(directory=str(OUTPUT_DIR)), name="outputs")
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
@@ -381,22 +427,61 @@ async def api_presets():
     return PRESETS
 
 
-# ─── Frontend ────────────────────────────────────────────────
+# ─── Auth Endpoints ──────────────────────────────────────────
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(session: str | None = Cookie(None)):
+    if verify_session(session):
+        return RedirectResponse("/", 302)
+    login_html = APP_DIR / "static" / "login.html"
+    return login_html.read_text(encoding="utf-8")
+
+
+@app.post("/login")
+async def login_submit(
+    response: Response,
+    username: str = Form(...),
+    password: str = Form(...),
+):
+    if username == ADMIN_USER and password == ADMIN_PASS:
+        token = create_session(username)
+        resp = RedirectResponse("/", 302)
+        resp.set_cookie("session", token, httponly=True, samesite="lax", max_age=SESSION_MAX_AGE)
+        return resp
+    login_html = (APP_DIR / "static" / "login.html").read_text(encoding="utf-8")
+    return HTMLResponse(login_html.replace("<!--ERROR-->", '<p class="err">ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง</p>'), 401)
+
+
+@app.get("/logout")
+async def logout():
+    resp = RedirectResponse("/login", 302)
+    resp.delete_cookie("session")
+    return resp
+
+
+@app.get("/api/me")
+async def api_me(session: str | None = Cookie(None)):
+    user = verify_session(session)
+    if not user:
+        return JSONResponse({"detail": "Unauthorized"}, 401)
+    return {"user": user}
+
+
+# ─── Frontend (protected) ────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
-async def home():
+async def home(session: str | None = Cookie(None)):
+    if not verify_session(session):
+        return RedirectResponse("/login", 302)
     html_path = APP_DIR / "static" / "index.html"
     return html_path.read_text(encoding="utf-8")
-
-
-# (old inline HTML removed — now served from static/index.html)
-
 
 
 if __name__ == "__main__":
     import uvicorn
     print("=" * 50)
     print("  SadTalker Studio")
-    print("  http://localhost:8000")
+    print(f"  http://localhost:8000")
+    print(f"  Login: {ADMIN_USER} / {ADMIN_PASS}")
     print("=" * 50)
     uvicorn.run(app, host="0.0.0.0", port=8000)
