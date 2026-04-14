@@ -1,0 +1,144 @@
+# ═══════════════════════════════════════════════════════════════
+# CI/CD Pipeline — Test → Build → Deploy
+#
+# Triggers: push to main, pull requests
+# Gates:    Unit + Integration tests MUST pass before build
+#           E2E tests run against built container
+#           Deploy blocked if ANY test fails
+# ═══════════════════════════════════════════════════════════════
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ── Stage 1: Unit + Integration Tests ────────────────────
+  test:
+    name: Unit & Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libglib2.0-0 ffmpeg libsndfile1
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+          pip install fastapi uvicorn itsdangerous edge-tts
+          pip install pytest pytest-asyncio httpx
+
+      - name: Run Unit Tests
+        run: python -m pytest tests/test_unit.py -v --tb=short --junitxml=reports/unit.xml
+
+      - name: Run Integration Tests
+        run: python -m pytest tests/test_integration.py -v --tb=short --junitxml=reports/integration.xml
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: reports/
+
+  # ── Stage 2: E2E Tests ──────────────────────────────────
+  e2e:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    needs: test  # only run if unit/integration pass
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libglib2.0-0 ffmpeg libsndfile1
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+          pip install fastapi uvicorn itsdangerous edge-tts
+          pip install pytest pytest-asyncio playwright
+          python -m playwright install chromium --with-deps
+
+      - name: Start server
+        run: |
+          python webui_app.py &
+          sleep 5
+        env:
+          ST_USER: admin
+          ST_PASS: sadtalker
+
+      - name: Run E2E Tests
+        run: python -m pytest tests/test_e2e.py -v --tb=short --junitxml=reports/e2e.xml
+
+      - name: Upload E2E report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: reports/
+
+  # ── Stage 3: Build Docker Image ─────────────────────────
+  build:
+    name: Build & Push Image
+    runs-on: ubuntu-latest
+    needs: [test, e2e]  # blocked if ANY test fails
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

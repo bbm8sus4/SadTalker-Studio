@@ -4,9 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
 <title>SadTalker Studio</title>
+<!-- Preconnect to critical origins for faster font + API loads -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<!-- Font: only load weights actually used (400,500,600,700) with display=swap for non-blocking render -->
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- DNS prefetch for Edge TTS (backend calls this for audio) -->
+<link rel="dns-prefetch" href="https://speech.platform.bing.com">
 <style>
 /* ═══════════════════════════════════════════
    THEME TOKENS

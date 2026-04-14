@@ -1,0 +1,220 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SadTalker Studio API",
+    "version": "1.0.0",
+    "description": "REST API for generating talking head videos from images and text/audio."
+  },
+  "servers": [
+    { "url": "http://localhost:8000", "description": "Local development" }
+  ],
+  "paths": {
+    "/login": {
+      "post": {
+        "summary": "Login",
+        "tags": ["Auth"],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": ["username", "password"],
+                "properties": {
+                  "username": { "type": "string" },
+                  "password": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "302": { "description": "Login successful — redirect to /" },
+          "401": { "description": "Invalid credentials" }
+        }
+      }
+    },
+    "/api/me": {
+      "get": {
+        "summary": "Current user info",
+        "tags": ["Auth"],
+        "responses": {
+          "200": {
+            "description": "Authenticated user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "user": { "type": "string" } }
+                }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized" }
+        }
+      }
+    },
+    "/api/generate": {
+      "post": {
+        "summary": "Start video generation job",
+        "tags": ["Generate"],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": { "type": "string", "description": "TTS text (required if no audio)" },
+                  "voice": { "type": "string", "default": "th-TH-PremwadeeNeural" },
+                  "rate": { "type": "string", "default": "+0%" },
+                  "pitch": { "type": "string", "default": "+0Hz" },
+                  "image": { "type": "string", "format": "binary", "description": "Face image upload" },
+                  "audio": { "type": "string", "format": "binary", "description": "Audio file upload" },
+                  "example_image": { "type": "string", "description": "Example image filename" },
+                  "preset": { "type": "string", "enum": ["draft", "standard", "hq", "marketing"], "default": "standard" },
+                  "preprocess": { "type": "string", "enum": ["", "crop", "extcrop", "resize", "full", "extfull"] },
+                  "enhancer": { "type": "string", "enum": ["", "gfpgan", "RestoreFormer", "none"] },
+                  "still": { "type": "string", "enum": ["true", "false"] },
+                  "expression_scale": { "type": "number", "minimum": 0.5, "maximum": 2.0 },
+                  "pose_style": { "type": "integer", "minimum": 0, "maximum": 45 },
+                  "output_name": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Job created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "job_id": { "type": "string" } }
+                }
+              }
+            }
+          },
+          "400": { "description": "Validation error (missing image, invalid type, oversized file)" },
+          "401": { "description": "Unauthorized" },
+          "429": { "description": "Rate limited" }
+        }
+      }
+    },
+    "/api/status/{job_id}": {
+      "get": {
+        "summary": "Poll job status",
+        "tags": ["Generate"],
+        "parameters": [{ "name": "job_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": {
+            "description": "Job status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "enum": ["running", "done", "error"] },
+                    "progress": { "type": "integer" },
+                    "step": { "type": "string" },
+                    "result": { "type": "string", "description": "Video URL (when done)" },
+                    "error": { "type": "string", "description": "Error message (when error)" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Job not found" }
+        }
+      }
+    },
+    "/api/history": {
+      "get": {
+        "summary": "List generated videos",
+        "tags": ["History"],
+        "responses": {
+          "200": {
+            "description": "Array of video metadata",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/VideoMeta" } } } }
+          }
+        }
+      }
+    },
+    "/api/history/{filename}": {
+      "patch": {
+        "summary": "Rename video",
+        "tags": ["History"],
+        "parameters": [{ "name": "filename", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "content": { "application/x-www-form-urlencoded": { "schema": { "type": "object", "required": ["new_name"], "properties": { "new_name": { "type": "string" } } } } }
+        },
+        "responses": { "200": { "description": "Renamed" }, "404": { "description": "Not found" } }
+      },
+      "delete": {
+        "summary": "Delete video",
+        "tags": ["History"],
+        "parameters": [{ "name": "filename", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Deleted" } }
+      }
+    },
+    "/api/uploads": {
+      "get": { "summary": "List uploaded images", "tags": ["Uploads"], "responses": { "200": { "description": "Array of uploads" } } }
+    },
+    "/api/uploads/{filename}": {
+      "delete": { "summary": "Delete uploaded image", "tags": ["Uploads"], "parameters": [{ "name": "filename", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Deleted" } } }
+    },
+    "/api/voices": {
+      "get": { "summary": "List available TTS voices", "tags": ["Config"], "responses": { "200": { "description": "Voice map {id: label}" } } }
+    },
+    "/api/presets": {
+      "get": { "summary": "List all presets (built-in + custom)", "tags": ["Config"], "responses": { "200": { "description": "Preset map" } } }
+    },
+    "/api/custom-presets": {
+      "get": { "summary": "List custom presets", "tags": ["Presets"], "responses": { "200": { "description": "Custom preset map" } } },
+      "post": {
+        "summary": "Create custom preset",
+        "tags": ["Presets"],
+        "requestBody": {
+          "content": { "application/x-www-form-urlencoded": { "schema": { "type": "object", "required": ["key", "label"], "properties": { "key": { "type": "string" }, "label": { "type": "string" }, "desc": { "type": "string" }, "preprocess": { "type": "string" }, "enhancer": { "type": "string" }, "still": { "type": "string" }, "expression_scale": { "type": "number" } } } } }
+        },
+        "responses": { "200": { "description": "Created" }, "400": { "description": "Invalid or reserved name" } }
+      }
+    },
+    "/api/custom-presets/{key}": {
+      "put": { "summary": "Update custom preset", "tags": ["Presets"], "parameters": [{ "name": "key", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Updated" }, "404": { "description": "Not found" } } },
+      "delete": { "summary": "Delete custom preset", "tags": ["Presets"], "parameters": [{ "name": "key", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Deleted" }, "404": { "description": "Not found" } } }
+    },
+    "/api/examples": {
+      "get": { "summary": "List example images", "tags": ["Config"], "responses": { "200": { "description": "Array of example images" } } }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VideoMeta": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "filename": { "type": "string" },
+          "created": { "type": "string", "format": "date-time" },
+          "text": { "type": "string" },
+          "voice": { "type": "string" },
+          "image": { "type": "string" },
+          "preset": { "type": "string" },
+          "enhancer": { "type": "string" },
+          "expression_scale": { "type": "number" },
+          "still": { "type": "boolean" },
+          "size_bytes": { "type": "integer" },
+          "video_url": { "type": "string" }
+        }
+      }
+    },
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "session",
+        "description": "Signed session cookie (HttpOnly, SameSite=Lax)"
+      }
+    }
+  },
+  "security": [{ "sessionCookie": [] }]
+}

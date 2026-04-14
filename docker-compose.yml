@@ -1,0 +1,59 @@
+# ═══════════════════════════════════════════════════════════════
+# SadTalker Studio — Production Docker Compose
+#
+# Usage:
+#   cp .env.example .env    # edit credentials
+#   docker compose up -d
+#   docker compose logs -f
+# ═══════════════════════════════════════════════════════════════
+
+services:
+  studio:
+    build: .
+    image: sadtalker-studio:latest
+    container_name: sadtalker-studio
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+
+    environment:
+      - ST_USER=${ST_USER:-admin}
+      - ST_PASS=${ST_PASS:-changeme}
+      - ST_SECRET=${ST_SECRET:-}
+      - TZ=Asia/Bangkok
+
+    # ── Resource limits — prevent OOM and runaway processes ──
+    deploy:
+      resources:
+        limits:
+          memory: 8G       # SadTalker inference peaks ~4-6GB
+          cpus: "4.0"
+        reservations:
+          memory: 2G
+          cpus: "1.0"
+
+    # ── Log rotation — prevent disk exhaustion ──
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"    # max 10MB per log file
+        max-file: "3"      # keep 3 rotated files (30MB total max)
+
+    # ── Persistent volumes ──
+    volumes:
+      - studio-outputs:/app/outputs
+      - studio-uploads:/app/uploads
+      - studio-checkpoints:/app/checkpoints
+
+    # ── Health check ──
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/login')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  studio-outputs:
+  studio-uploads:
+  studio-checkpoints:
