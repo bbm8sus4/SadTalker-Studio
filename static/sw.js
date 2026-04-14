@@ -7,7 +7,7 @@
  *   - Queue failed POST/PATCH/DELETE in IndexedDB → auto-sync on reconnect
  */
 
-const CACHE_NAME = 'sadtalker-v1';
+const CACHE_NAME = 'sadtalker-v2';
 const STATIC_ASSETS = [
   '/',
   '/login',
