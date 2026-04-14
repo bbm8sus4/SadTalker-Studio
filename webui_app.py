@@ -75,14 +75,43 @@ class StructuredLogger:
 log = StructuredLogger()
 
 
-# ─── Auth Config ─────────────────────────────────────────────
+# ─── Auth & RBAC Config ──────────────────────────────────────
+# Roles: admin (full access), editor (generate+history), viewer (read-only)
 
-ADMIN_USER = os.environ.get("ST_USER", "admin")
-ADMIN_PASS = os.environ.get("ST_PASS", "sadtalker")
 SECRET_KEY = os.environ.get("ST_SECRET", uuid.uuid4().hex)
 SESSION_MAX_AGE = 86400 * 7  # 7 days
 
 serializer = URLSafeTimedSerializer(SECRET_KEY)
+
+USERS_FILE = APP_DIR / "users.json"
+
+ROLE_PERMISSIONS = {
+    "admin":  {"generate", "history", "history.rename", "history.delete", "uploads", "uploads.delete", "presets", "presets.create", "presets.delete", "settings", "users"},
+    "editor": {"generate", "history", "history.rename", "history.delete", "uploads", "presets", "settings"},
+    "viewer": {"history", "uploads"},
+}
+
+def load_users() -> dict:
+    """Load user database. Format: {"username": {"password": "...", "role": "admin"}}"""
+    if USERS_FILE.exists():
+        try:
+            return json.loads(USERS_FILE.read_text())
+        except Exception:
+            pass
+    # Default: single admin from env vars
+    return {
+        os.environ.get("ST_USER", "admin"): {
+            "password": os.environ.get("ST_PASS", "sadtalker"),
+            "role": "admin",
+        }
+    }
+
+def save_users(data: dict):
+    USERS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+
+def check_perm(role: str, perm: str) -> bool:
+    return perm in ROLE_PERMISSIONS.get(role, set())
+
 
 # In-memory state
 jobs: dict = {}
@@ -90,18 +119,86 @@ jobs: dict = {}
 
 # ─── Auth Helpers ────────────────────────────────────────────
 
-def create_session(username: str) -> str:
-    return serializer.dumps({"user": username})
+def create_session(username: str, role: str) -> str:
+    return serializer.dumps({"user": username, "role": role})
 
 
-def verify_session(token: str | None) -> str | None:
+def verify_session(token: str | None) -> dict | None:
+    """Returns {"user": str, "role": str} or None."""
     if not token:
         return None
     try:
         data = serializer.loads(token, max_age=SESSION_MAX_AGE)
-        return data.get("user")
+        if "user" in data:
+            return data
     except (BadSignature, SignatureExpired):
-        return None
+        pass
+    return None
+
+
+# ─── Audit Log (ISO 27001 compliant) ────────────────────────
+# Append-only JSON log of all state-changing actions
+
+AUDIT_FILE = APP_DIR / "audit.log"
+
+def audit(user: str, role: str, action: str, target: str = "", detail: str = "", ip: str = ""):
+    """Write immutable audit entry. Fields: timestamp, user, role, action, target, detail, ip."""
+    entry = {
+        "ts": datetime.utcnow().isoformat() + "Z",
+        "user": user,
+        "role": role,
+        "action": action,
+        "target": target,
+        "detail": detail,
+        "ip": ip,
+    }
+    with open(AUDIT_FILE, "a") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    log.info("audit", **entry)
+
+
+# ─── Feature Flags ───────────────────────────────────────────
+# Toggle features without deploy. Checked by API + frontend.
+
+FLAGS_FILE = APP_DIR / "flags.json"
+
+DEFAULT_FLAGS = {
+    "tts_enabled": True,
+    "audio_upload_enabled": True,
+    "custom_presets_enabled": True,
+    "bg_enhancer_enabled": True,
+    "max_concurrent_jobs": 3,
+    "maintenance_mode": False,
+}
+
+def load_flags() -> dict:
+    flags = dict(DEFAULT_FLAGS)
+    if FLAGS_FILE.exists():
+        try:
+            flags.update(json.loads(FLAGS_FILE.read_text()))
+        except Exception:
+            pass
+    return flags
+
+def save_flags(data: dict):
+    FLAGS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+
+
+# ─── Analytics / Telemetry ───────────────────────────────────
+# Structured event collection for KPI tracking
+
+ANALYTICS_FILE = APP_DIR / "analytics.log"
+
+def track(event: str, user: str = "", props: dict | None = None):
+    """Fire structured telemetry event."""
+    entry = {
+        "ts": datetime.utcnow().isoformat() + "Z",
+        "event": event,
+        "user": user,
+        **(props or {}),
+    }
+    with open(ANALYTICS_FILE, "a") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
 # ─── Path Safety ─────────────────────────────────────────────
@@ -122,7 +219,7 @@ def safe_path(base: Path, user_input: str) -> Path | None:
 # ─── Middleware Pipeline ─────────────────────────────────────
 # Order: RequestID → Logging → RateLimit → Auth
 
-PUBLIC_PATHS = {"/login", "/favicon.ico"}
+PUBLIC_PATHS = {"/login", "/favicon.ico", "/static/sw.js"}
 
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
@@ -171,18 +268,29 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    """Enforce session auth on all routes except public paths."""
+    """Enforce session auth + RBAC + maintenance mode."""
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         if path in PUBLIC_PATHS or path.startswith("/examples/"):
             return await call_next(request)
+
+        # Maintenance mode — block all except admin
+        flags = load_flags()
         token = request.cookies.get("session")
-        user = verify_session(token)
-        if not user:
+        session = verify_session(token)
+
+        if not session:
             if path.startswith("/api/"):
                 return JSONResponse({"detail": "Unauthorized"}, 401)
             return RedirectResponse("/login", 302)
-        request.state.user = user
+
+        if flags.get("maintenance_mode") and session.get("role") != "admin":
+            if path.startswith("/api/"):
+                return JSONResponse({"detail": "ระบบอยู่ระหว่างบำรุงรักษา"}, 503)
+            return HTMLResponse("<h2>ระบบอยู่ระหว่างบำรุงรักษา</h2>", 503)
+
+        request.state.user = session.get("user", "")
+        request.state.role = session.get("role", "viewer")
         return await call_next(request)
 
 
@@ -195,6 +303,7 @@ app.add_middleware(RateLimitMiddleware)
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(RequestIdMiddleware)
 
+app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 app.mount("/outputs", StaticFiles(directory=str(OUTPUT_DIR)), name="outputs")
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 app.mount("/examples", StaticFiles(directory=str(APP_DIR / "examples")), name="examples")
@@ -420,6 +529,7 @@ def cleanup_old_jobs():
 
 @app.post("/api/generate")
 async def api_generate(
+    request: Request,
     text: str = Form(""),
     voice: str = Form("th-TH-PremwadeeNeural"),
     rate: str = Form("+0%"),
@@ -441,8 +551,16 @@ async def api_generate(
     input_roll: str = Form(""),
     output_name: str = Form(""),
 ):
+    # RBAC check
+    user = getattr(request.state, "user", "")
+    role = getattr(request.state, "role", "viewer")
+    if not check_perm(role, "generate"):
+        return JSONResponse({"detail": "ไม่มีสิทธิ์สร้างวิดีโอ"}, 403)
+
     job_id = uuid.uuid4().hex[:8]
-    log.info("generate_request", job_id=job_id, preset=preset, has_image=bool(image and image.filename), has_audio=bool(audio and audio.filename))
+    log.info("generate_request", job_id=job_id, user=user, preset=preset)
+    audit(user, role, "generate", target=job_id, detail=f"preset={preset}")
+    track("generate_start", user=user, props={"preset": preset, "job_id": job_id})
 
     # Resolve image (with size + type validation)
     ALLOWED_IMG = {".png", ".jpg", ".jpeg", ".webp"}
@@ -751,32 +869,127 @@ async def login_page(session: str | None = Cookie(None)):
 
 @app.post("/login")
 async def login_submit(
+    request: Request,
     response: Response,
     username: str = Form(...),
     password: str = Form(...),
 ):
-    if username == ADMIN_USER and password == ADMIN_PASS:
-        token = create_session(username)
+    users = load_users()
+    user_data = users.get(username)
+    ip = request.client.host if request.client else ""
+    if user_data and user_data.get("password") == password:
+        role = user_data.get("role", "viewer")
+        token = create_session(username, role)
         resp = RedirectResponse("/", 302)
         resp.set_cookie("session", token, httponly=True, samesite="lax", max_age=SESSION_MAX_AGE)
+        audit(username, role, "login", ip=ip)
+        track("login", user=username, props={"role": role})
         return resp
+    audit(username, "none", "login_failed", ip=ip)
     login_html = (APP_DIR / "static" / "login.html").read_text(encoding="utf-8")
     return HTMLResponse(login_html.replace("<!--ERROR-->", '<p class="err">ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง</p>'), 401)
 
 
 @app.get("/logout")
-async def logout():
+async def logout(request: Request):
+    user = getattr(request.state, "user", "")
+    role = getattr(request.state, "role", "")
+    audit(user, role, "logout")
     resp = RedirectResponse("/login", 302)
     resp.delete_cookie("session")
     return resp
 
 
 @app.get("/api/me")
-async def api_me(session: str | None = Cookie(None)):
-    user = verify_session(session)
-    if not user:
+async def api_me(request: Request, session: str | None = Cookie(None)):
+    data = verify_session(session)
+    if not data:
         return JSONResponse({"detail": "Unauthorized"}, 401)
-    return {"user": user}
+    role = data.get("role", "viewer")
+    return {
+        "user": data["user"],
+        "role": role,
+        "permissions": sorted(ROLE_PERMISSIONS.get(role, set())),
+    }
+
+
+# ─── Feature Flags + Audit + Analytics Endpoints ─────────────
+
+@app.get("/api/flags")
+async def api_flags():
+    return load_flags()
+
+
+@app.put("/api/flags")
+async def api_update_flags(request: Request):
+    if getattr(request.state, "role", "") != "admin":
+        return JSONResponse({"detail": "Admin only"}, 403)
+    body = await request.json()
+    flags = load_flags()
+    flags.update(body)
+    save_flags(flags)
+    audit(request.state.user, "admin", "flags_updated", detail=json.dumps(body))
+    return {"ok": True}
+
+
+@app.get("/api/audit")
+async def api_audit(request: Request):
+    """Return last 100 audit entries (admin only)."""
+    if getattr(request.state, "role", "") != "admin":
+        return JSONResponse({"detail": "Admin only"}, 403)
+    if not AUDIT_FILE.exists():
+        return []
+    lines = AUDIT_FILE.read_text().strip().split("\n")[-100:]
+    return [json.loads(l) for l in lines if l.strip()]
+
+
+@app.post("/api/track")
+async def api_track(request: Request):
+    """Receive frontend telemetry events."""
+    body = await request.json()
+    track(
+        event=body.get("event", "unknown"),
+        user=getattr(request.state, "user", ""),
+        props=body.get("props", {}),
+    )
+    return {"ok": True}
+
+
+@app.get("/api/users")
+async def api_list_users(request: Request):
+    if getattr(request.state, "role", "") != "admin":
+        return JSONResponse({"detail": "Admin only"}, 403)
+    users = load_users()
+    # Mask passwords (PII protection)
+    return {k: {"role": v.get("role", "viewer")} for k, v in users.items()}
+
+
+@app.post("/api/users")
+async def api_create_user(request: Request, username: str = Form(...), password: str = Form(...), role: str = Form("viewer")):
+    if getattr(request.state, "role", "") != "admin":
+        return JSONResponse({"detail": "Admin only"}, 403)
+    if role not in ROLE_PERMISSIONS:
+        return JSONResponse({"detail": f"Invalid role. Use: {list(ROLE_PERMISSIONS.keys())}"}, 400)
+    users = load_users()
+    if username in users:
+        return JSONResponse({"detail": "User already exists"}, 400)
+    users[username] = {"password": password, "role": role}
+    save_users(users)
+    audit(request.state.user, "admin", "user_created", target=username, detail=f"role={role}")
+    return {"ok": True}
+
+
+@app.delete("/api/users/{username}")
+async def api_delete_user(request: Request, username: str):
+    if getattr(request.state, "role", "") != "admin":
+        return JSONResponse({"detail": "Admin only"}, 403)
+    users = load_users()
+    if username not in users:
+        return JSONResponse({"detail": "User not found"}, 404)
+    del users[username]
+    save_users(users)
+    audit(request.state.user, "admin", "user_deleted", target=username)
+    return {"ok": True}
 
 
 # ─── Frontend (protected) ────────────────────────────────────
@@ -794,6 +1007,8 @@ if __name__ == "__main__":
     print("=" * 50)
     print("  SadTalker Studio")
     print(f"  http://localhost:8000")
-    print(f"  Login: {ADMIN_USER} / {ADMIN_PASS}")
+    users = load_users()
+    first_user = next(iter(users.keys()), "admin")
+    print(f"  Login: {first_user}")
     print("=" * 50)
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -736,6 +736,37 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
 <script>
 const Q=s=>document.querySelector(s), $=id=>document.getElementById(id);
 
+/* ── Service Worker — offline resilience ── */
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('/static/sw.js').catch(()=>{});
+  // Auto-sync when back online
+  window.addEventListener('online',()=>{
+    navigator.serviceWorker.ready.then(reg=>{
+      if(reg.sync)reg.sync.register('sync-queue');
+      else reg.active.postMessage('sync-now');
+    });
+  });
+  // Listen for sync-complete from SW
+  navigator.serviceWorker.addEventListener('message',e=>{
+    if(e.data?.type==='sync-complete'){loadH();loadUploads();}
+  });
+}
+
+/* ── RBAC state — populated from /api/me ── */
+let currentRole='viewer';
+let currentPerms=new Set();
+
+function hasPerm(p){return currentPerms.has(p);}
+
+/* ── Feature Flags — cached from /api/flags ── */
+let flags={};
+
+/* ── Analytics — fire-and-forget telemetry ── */
+function trackEvent(event,props={}){
+  fetch('/api/track',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({event,props})}).catch(()=>{});
+}
+
 /* ── API Client — cached fetcher with auth redirect + error logging ── */
 const apiCache=new Map();
 const API_CACHE_TTL=60000; // 1 min for static endpoints
@@ -803,8 +834,22 @@ let preset='standard',selImg='',upImg=null,upAud=null,poll=null;
 
 /* ── Init ── */
 async function init(){
-  // Check auth & show user
-  try{const me=await api.get('/api/me');if(me.user)$('userLabel').textContent=me.user;}catch(e){location.href='/login';return;}
+  // Auth + RBAC
+  try{
+    const me=await api.get('/api/me');
+    if(me.user)$('userLabel').textContent=me.user+' ('+me.role+')';
+    currentRole=me.role||'viewer';
+    currentPerms=new Set(me.permissions||[]);
+  }catch(e){location.href='/login';return;}
+
+  // Feature flags
+  try{flags=await api.get('/api/flags',{cache:true});}catch(e){flags={};}
+
+  // RBAC: hide UI elements based on permissions
+  if(!hasPerm('generate')){$('goBtn').style.display='none';}
+  if(!hasPerm('presets.create')){const cpForm=Q('#pg-presets .card');if(cpForm)cpForm.style.display='none';}
+
+  trackEvent('page_load',{role:currentRole});
 
   const vc=await api.get('/api/voices',{cache:true});
   const v1=$('voice'),v2=$('vChip');
@@ -890,10 +935,13 @@ function onAud(){
 
 /* ── Generate ── */
 async function generate(){
+  // RBAC client-side guard
+  if(!hasPerm('generate')){alert('ไม่มีสิทธิ์สร้างวิดีโอ');return;}
   const mode=$('aMode').value,txt=$('text').value.trim();
   if(mode==='tts'&&!txt){alert('กรุณาพิมพ์ข้อความ');return;}
   if(mode==='file'&&!upAud){alert('กรุณาอัปโหลดเสียง');return;}
   if(!selImg&&!upImg){alert('กรุณาเลือกรูป');return;}
+  trackEvent('generate_click',{preset,mode});
 
   $('goBtn').disabled=true;$('goBtn').textContent='กำลังสร้าง...';
   $('badge').textContent='กำลัง Generate...';$('badge').style.background='var(--red-s)';$('badge').style.color='var(--red)';
