@@ -592,7 +592,10 @@ async function init(){
 
   $('pChip').onchange=function(){pick(this.value);};
   $('text').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();generate();}});
-  loadH();
+
+  // Restore page from URL hash
+  const hash=location.hash.replace('#','');
+  if(hash&&titles[hash])go(hash);else loadH();
 }
 
 /* ── Nav ── */
@@ -607,6 +610,7 @@ function go(p){
     if((p==='create'&&t==='สร้างวิดีโอ')||(p==='settings'&&t==='ตั้งค่า')||(p==='history'&&t==='ประวัติ'))li.classList.add('on');
   });
   if(p==='history')loadH();
+  history.replaceState(null,'','#'+p);
 }
 function pick(k){
   preset=k;
