@@ -906,7 +906,7 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
     </div>
     <select class="bb-pill" id="vChip"></select>
     <select class="bb-pill" id="pChip">
-      <option value="draft">เร็ว</option><option value="standard" selected>มาตรฐาน</option>
+      <option value="draft" selected>เร็ว</option><option value="standard">มาตรฐาน</option>
       <option value="hq">คุณภาพสูง</option>
     </select>
     <button class="btn-go" id="goBtn" onclick="generate()">Generate</button>
@@ -1091,7 +1091,7 @@ function toggleTheme(){const t=getTheme()==='dark'?'light':'dark';localStorage.s
 applyTheme(getTheme());
 
 /* ── State ── */
-let preset='standard',selImg='',upImg=null,upAud=null,poll=null;
+let preset='draft',selImg='',upImg=null,upAud=null,poll=null;
 
 /* ── Init ── */
 async function init(){
