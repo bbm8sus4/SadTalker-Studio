@@ -1086,6 +1086,54 @@ async def api_delete_user(request: Request, username: str):
     return {"ok": True}
 
 
+# ─── AI Copilot (Claude Max via CLI) ─────────────────────────
+
+@app.post("/api/ai-copilot")
+async def api_ai_copilot(request: Request):
+    """Generate script via Claude CLI using Max subscription."""
+    if not check_perm(getattr(request.state, "role", ""), "generate"):
+        return JSONResponse({"detail": "ไม่มีสิทธิ์ใช้ AI"}, 403)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"detail": "Invalid JSON"}, 400)
+
+    prompt = body.get("prompt", "").strip()
+    if not prompt:
+        return JSONResponse({"detail": "กรุณาพิมพ์คำสั่ง"}, 400)
+    if len(prompt) > 1000:
+        return JSONResponse({"detail": "คำสั่งยาวเกิน 1000 ตัวอักษร"}, 400)
+
+    # System prompt for script generation
+    system = """คุณเป็นนักเขียนบทพูดสำหรับวิดีโอ Talking Head ภาษาไทย
+กฎ:
+- ตอบเป็นบทพูดเท่านั้น ไม่ต้องอธิบาย ไม่ต้องใส่หมายเหตุ
+- เขียนแบบพูดจริง ไม่เป็นทางการเกินไป
+- ถ้าระบุความยาว ให้เขียนให้พอดี (ภาษาไทยพูดประมาณ 6 ตัวอักษร/วินาที)
+- ถ้าไม่ระบุ ให้เขียน 10-15 วินาที"""
+
+    user = getattr(request.state, "user", "")
+    audit(user, getattr(request.state, "role", ""), "ai_copilot", detail=prompt[:100])
+
+    try:
+        proc = subprocess.run(
+            ["claude", "--print", "--dangerously-skip-permissions"],
+            input=f"System: {system}\n\nUser: {prompt}",
+            capture_output=True, text=True, timeout=30,
+        )
+        if proc.returncode != 0:
+            return JSONResponse({"detail": "Claude ไม่ตอบ ลองอีกครั้ง"}, 500)
+        script = proc.stdout.strip()
+        if not script:
+            return JSONResponse({"detail": "ไม่ได้รับคำตอบ"}, 500)
+        track("ai_copilot", user=user, props={"prompt_len": len(prompt), "response_len": len(script)})
+        return {"script": script}
+    except subprocess.TimeoutExpired:
+        return JSONResponse({"detail": "Claude ตอบช้าเกินไป ลองอีกครั้ง"}, 504)
+    except FileNotFoundError:
+        return JSONResponse({"detail": "ไม่พบ Claude CLI — ตรวจสอบว่าลง Claude Code แล้ว"}, 500)
+
+
 # ─── PDPA / Data Subject Rights ──────────────────────────────
 
 @app.post("/api/anonymize")

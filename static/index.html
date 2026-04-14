@@ -590,6 +590,28 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
           <div class="alink" onclick="go('settings')">ตั้งค่าขั้นสูง &rarr;</div>
         </div>
       </div>
+      <!-- AI Copilot -->
+      <div class="card" style="margin-top:16px;">
+        <div class="card-h" style="display:flex;align-items:center;gap:6px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" style="width:16px;height:16px;"><path d="M12 2a4 4 0 014 4v1a2 2 0 012 2v1a4 4 0 01-1.17 2.83L12 18l-4.83-5.17A4 4 0 016 10V9a2 2 0 012-2V6a4 4 0 014-4z"/><path d="M9 22h6"/><path d="M12 18v4"/></svg>
+          AI เขียนบท (Claude)
+        </div>
+        <div style="display:flex;gap:8px;">
+          <input class="fi" type="text" id="aiPrompt" placeholder="เช่น เขียนบทขายครีมกันแดด 15 วินาที" style="flex:1;" onkeydown="if(event.key==='Enter')askAI()">
+          <button class="btn btn-g" onclick="askAI()" id="aiBtn" style="white-space:nowrap;">ถาม Claude</button>
+        </div>
+        <div id="aiResult" style="display:none;margin-top:12px;">
+          <div style="background:var(--bg2);border-radius:8px;padding:12px 16px;font-size:.9rem;line-height:1.7;white-space:pre-wrap;" id="aiScript"></div>
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button class="btn btn-g btn-sm" onclick="useAIScript()">ใช้บทนี้</button>
+            <button class="btn btn-o btn-sm" onclick="askAI()">เขียนใหม่</button>
+            <button class="btn btn-o btn-sm" onclick="askAIEdit('ย่อให้สั้นลง')">ย่อลง</button>
+            <button class="btn btn-o btn-sm" onclick="askAIEdit('ขยายให้ยาวขึ้น')">ยาวขึ้น</button>
+            <button class="btn btn-o btn-sm" onclick="askAIEdit('เปลี่ยนเป็นภาษาอังกฤษ')">แปลอังกฤษ</button>
+          </div>
+        </div>
+      </div>
+
       <div class="ebox" id="ebox">
         <div class="ebox-title" id="ebox-title">มีบางอย่างผิดพลาด</div>
         <div id="ebox-msg"></div>
@@ -1386,6 +1408,45 @@ function updateBadge(){
 }
 
 function closeRes(){$('ovRes').classList.remove('show');}
+
+/* ── AI Copilot ── */
+let lastAIScript='';
+async function askAI(){
+  const prompt=$('aiPrompt').value.trim();
+  if(!prompt){toast('พิมพ์คำสั่งให้ Claude ก่อน เช่น "เขียนบทขายครีม 15 วิ"','warn');return;}
+  const btn=$('aiBtn');
+  btn.disabled=true;btn.textContent='กำลังคิด...';
+  try{
+    const r=await fetch('/api/ai-copilot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt})});
+    if(!r.ok){const e=await r.json();throw new Error(e.detail||'Error');}
+    const d=await r.json();
+    lastAIScript=d.script;
+    $('aiScript').textContent=d.script;
+    $('aiResult').style.display='block';
+  }catch(e){toast(errLog.handle('aiCopilot',e),'error');}
+  btn.disabled=false;btn.textContent='ถาม Claude';
+}
+async function askAIEdit(instruction){
+  if(!lastAIScript)return;
+  $('aiPrompt').value=instruction+': '+lastAIScript.substring(0,100);
+  const btn=$('aiBtn');
+  btn.disabled=true;btn.textContent='กำลังแก้...';
+  try{
+    const r=await fetch('/api/ai-copilot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:instruction+'\n\nบทเดิม:\n'+lastAIScript})});
+    if(!r.ok){const e=await r.json();throw new Error(e.detail||'Error');}
+    const d=await r.json();
+    lastAIScript=d.script;
+    $('aiScript').textContent=d.script;
+  }catch(e){toast(errLog.handle('aiEdit',e),'error');}
+  btn.disabled=false;btn.textContent='ถาม Claude';
+}
+function useAIScript(){
+  if(!lastAIScript)return;
+  $('text').value=lastAIScript;
+  toast('ใส่บทในช่องข้อความแล้ว กด Generate ได้เลย!','success');
+  // Scroll to bottom bar
+  $('text').focus();
+}
 
 /* ── Helpers ── */
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
