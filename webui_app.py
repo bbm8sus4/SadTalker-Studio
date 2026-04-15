@@ -21,7 +21,6 @@ import hmac
 import logging
 import threading
 import re
-import secrets
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
@@ -32,6 +31,7 @@ from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+import httpx
 
 # ─── Paths ───────────────────────────────────────────────────
 
@@ -601,11 +601,26 @@ async def api_generate(
     input_roll: str = Form(""),
     output_name: str = Form(""),
 ):
-    # RBAC + feature flag checks
+    # RBAC + feature flag checks + input whitelist
     user = getattr(request.state, "user", "")
     role = getattr(request.state, "role", "viewer")
     if not check_perm(role, "generate"):
         return JSONResponse({"detail": "ไม่มีสิทธิ์สร้างวิดีโอ"}, 403)
+    # Whitelist params to prevent injection
+    VALID_RATES = {"-30%", "-15%", "+0%", "+15%", "+30%"}
+    VALID_PITCHES = {"-20Hz", "-10Hz", "+0Hz", "+10Hz", "+20Hz"}
+    VALID_ENHANCERS = {"", "gfpgan", "RestoreFormer", "none"}
+    VALID_BG_ENHANCERS = {"", "none", "realesrgan"}
+    if voice not in VOICES:
+        voice = "th-TH-PremwadeeNeural"
+    if rate not in VALID_RATES:
+        rate = "+0%"
+    if pitch not in VALID_PITCHES:
+        pitch = "+0Hz"
+    if enhancer not in VALID_ENHANCERS:
+        enhancer = ""
+    if background_enhancer not in VALID_BG_ENHANCERS:
+        background_enhancer = ""
     fl = load_flags()
     if not fl.get("tts_enabled", True) and text.strip() and not (audio and audio.filename):
         return JSONResponse({"detail": "TTS ถูกปิดใช้งานชั่วคราว"}, 503)
@@ -1176,7 +1191,7 @@ async def api_voice_clone_upload(
 
     content = await audio.read()
     if len(content) < 1000:
-        return JSONResponse({"detail": "ไฟล์เสียงสั้นเกินไป ต้องอย่างน้อย 30 วินาที"}, 400)
+        return JSONResponse({"detail": "ไฟล์เสียงเล็กเกินไป (ต้อง >1KB) แนะนำอย่างน้อย 30 วินาที"}, 400)
 
     user = getattr(request.state, "user", "")
     audit(user, getattr(request.state, "role", ""), "voice_clone_create", detail=f"name={name}")
@@ -1189,8 +1204,13 @@ async def api_voice_clone_upload(
                 files={"files": (audio.filename, content, "audio/mpeg")},
             )
             if resp.status_code != 200:
-                return JSONResponse({"detail": f"Clone failed: {resp.text[:200]}"}, 500)
-            voice_id = resp.json().get("voice_id", "")
+                return JSONResponse({"detail": "Clone ไม่สำเร็จ ลองอัปโหลดเสียงที่ยาวกว่า"}, 500)
+            try:
+                voice_id = resp.json().get("voice_id", "")
+            except Exception:
+                return JSONResponse({"detail": "ElevenLabs ตอบกลับผิดรูปแบบ"}, 500)
+            if not voice_id:
+                return JSONResponse({"detail": "ไม่ได้รับ voice_id กลับมา"}, 500)
             return {"ok": True, "voice_id": voice_id, "name": name}
     except Exception as e:
         return JSONResponse({"detail": str(e)}, 500)
@@ -1234,11 +1254,15 @@ async def api_voice_clone_local(request: Request):
         return JSONResponse({"detail": "Invalid JSON"}, 400)
 
     text = body.get("text", "").strip()
-    ref_audio = body.get("ref_audio", "")  # filename in voice_clones/ or uploads/
+    ref_audio = body.get("ref_audio", "")
     if not text:
         return JSONResponse({"detail": "ต้องระบุ text"}, 400)
     if len(text) > MAX_TEXT_LENGTH:
         return JSONResponse({"detail": f"ข้อความยาวเกิน {MAX_TEXT_LENGTH} ตัวอักษร"}, 400)
+    # Warn if Thai text — Chatterbox primarily supports English
+    thai_chars = sum(1 for c in text if '\u0e00' <= c <= '\u0e7f')
+    if thai_chars > len(text) * 0.3:
+        return JSONResponse({"detail": "Chatterbox รองรับภาษาอังกฤษเป็นหลัก ภาษาไทยอาจเสียงเพี้ยน ใช้ TTS ฟรี (Edge TTS) สำหรับภาษาไทยแทน"}, 400)
 
     model = get_chatterbox()
     if not model:
@@ -1282,7 +1306,7 @@ async def api_voice_clone_save(
 
     content = await audio.read()
     if len(content) < 5000:
-        return JSONResponse({"detail": "ไฟล์เสียงสั้นเกินไป ต้องอย่างน้อย 5 วินาที"}, 400)
+        return JSONResponse({"detail": "ไฟล์เสียงเล็กเกินไป (ต้อง >5KB) แนะนำอย่างน้อย 5 วินาที"}, 400)
     if len(content) > MAX_UPLOAD_BYTES:
         return JSONResponse({"detail": f"ไฟล์ใหญ่เกิน {MAX_UPLOAD_BYTES // 1024 // 1024} MB"}, 400)
 
@@ -1301,7 +1325,7 @@ async def api_voice_clone_save(
 
 
 @app.get("/api/voice-clones-local")
-async def api_voice_clones_local():
+async def api_voice_clones_local(request: Request):
     """List saved reference voices."""
     voices = []
     for f in sorted(VOICE_CLONES_DIR.glob("*")):
@@ -1314,8 +1338,6 @@ async def api_voice_clones_local():
 
 SYNC_API_KEY = os.environ.get("SYNC_API_KEY", "")
 SYNC_API_URL = "https://api.synclabs.so"
-
-import httpx
 
 def run_syncso(job_id: str, params: dict):
     """Background worker: TTS → upload-aware → Sync.so API → download result."""
