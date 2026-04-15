@@ -935,7 +935,12 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
           </select>
         </div>
         <div class="fg">
-          <label class="fl">หรือเขียนบทเอง</label>
+          <label class="fl">เลือกบทสำเร็จรูป <span style="color:var(--accent);cursor:pointer;" onclick="loadScriptLib()">(ดู 20+ บท)</span></label>
+          <div id="scriptLibPanel" style="display:none;max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px;">
+          </div>
+        </div>
+        <div class="fg">
+          <label class="fl">หรือเขียนบทเอง / แก้ไขบทที่เลือก</label>
           <textarea class="fi" id="pipeScript" rows="3" placeholder="เว้นว่างไว้ถ้าให้ Claude เขียนให้"></textarea>
         </div>
         <button class="btn btn-g" style="width:100%;justify-content:center;margin-top:10px;" onclick="pipeNext(2)">ถัดไป →</button>
@@ -1458,6 +1463,31 @@ async function createClone(){
     loadCloneVoices();
   }catch(e){toast(errLog.handle('createClone',e),'error');}
 }
+/* ── Script Library ── */
+async function loadScriptLib(){
+  const panel=$('scriptLibPanel');
+  if(panel.style.display==='block'){panel.style.display='none';return;}
+  panel.style.display='block';
+  if(panel.children.length>0)return; // already loaded
+  try{
+    const lib=await api.get('/api/script-library',{cache:true});
+    for(const[cat,scripts] of Object.entries(lib)){
+      const h=document.createElement('div');
+      h.style.cssText='font-weight:700;font-size:.82rem;margin:8px 0 4px;color:var(--accent);';
+      h.textContent=cat;panel.appendChild(h);
+      for(const s of scripts){
+        const d=document.createElement('div');
+        d.style.cssText='padding:6px 10px;border-radius:6px;cursor:pointer;font-size:.84rem;margin:2px 0;transition:.1s;';
+        d.onmouseenter=()=>d.style.background='var(--bg2)';
+        d.onmouseleave=()=>d.style.background='';
+        d.innerHTML=`<strong>${esc(s.title)}</strong> <span style="color:var(--muted);font-size:.75rem;">(${s.duration}วิ)</span>`;
+        d.onclick=()=>{$('pipeScript').value=s.script;panel.style.display='none';toast('เลือกบท "'+s.title+'" แล้ว','success');};
+        panel.appendChild(d);
+      }
+    }
+  }catch(e){panel.innerHTML='<div style="color:var(--muted);padding:10px;">โหลดไม่สำเร็จ</div>';}
+}
+
 /* ── Chatterbox (free local) ── */
 async function loadCBVoices(){
   try{

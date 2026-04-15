@@ -1628,6 +1628,15 @@ async def api_templates():
     return {k: v for k, v in SCRIPT_TEMPLATES.items()}
 
 
+@app.get("/api/script-library")
+async def api_script_library():
+    """Full library of ready-made scripts."""
+    lib_path = APP_DIR / "static" / "templates.json"
+    if lib_path.exists():
+        return json.loads(lib_path.read_text())
+    return {}
+
+
 @app.post("/api/pipeline")
 async def api_pipeline(request: Request):
     """Full pipeline: Script → Voice → Face → Post-production."""
