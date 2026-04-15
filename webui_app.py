@@ -1650,15 +1650,33 @@ async def api_batch(request: Request):
     images = body.get("images", [])
     if not images or len(images) > 10:
         return JSONResponse({"detail": "เลือกรูป 1-10 รูป"}, 400)
+    # Validate images are safe filenames
+    images = [Path(img).name for img in images if img and isinstance(img, str)]
+    if not images:
+        return JSONResponse({"detail": "ไม่มีรูปที่ถูกต้อง"}, 400)
+    # Validate engine
+    batch_engine = body.get("engine", "sadtalker")
+    if batch_engine not in {"sadtalker", "liveportrait", "syncso"}:
+        batch_engine = "sadtalker"
+    # Check concurrent job limit
+    fl = load_flags()
+    running = sum(1 for j in jobs.values() if j.get("status") == "running")
+    max_jobs = fl.get("max_concurrent_jobs", 3)
+    if running + len(images) > max_jobs + 2:  # allow small overshoot for batch
+        return JSONResponse({"detail": f"ระบบกำลังประมวลผล {running} งาน — ลดจำนวนรูปหรือรอสักครู่"}, 429)
 
     user = getattr(request.state, "user", "")
     role = getattr(request.state, "role", "")
     batch_id = uuid.uuid4().hex[:6]
     job_ids = []
 
+    # Whitelist only safe params
+    safe_params = {k: body.get(k) for k in ("script", "voice", "rate", "pitch", "duration", "template", "topic", "formats", "subtitle") if k in body}
+    safe_params["engine"] = batch_engine
+
     for i, img in enumerate(images):
         job_id = f"batch_{batch_id}_{i}"
-        params = {**body, "image": img}
+        params = {**safe_params, "image": img}
         jobs[job_id] = {"status": "running", "step": "starting", "progress": 0, "created": time.time(), "owner": user, "engine": "pipeline", "batch": batch_id}
         thread = threading.Thread(
             target=run_pipeline,
@@ -1682,9 +1700,10 @@ async def api_compare(request: Request):
     except Exception:
         return JSONResponse({"detail": "Invalid JSON"}, 400)
 
-    engines = body.get("engines", ["sadtalker"])
+    VALID_ENGINES = {"sadtalker", "liveportrait", "syncso"}
+    engines = [e for e in body.get("engines", ["sadtalker"]) if e in VALID_ENGINES]
     if not engines or len(engines) > 3:
-        return JSONResponse({"detail": "เลือก engine 1-3 ตัว"}, 400)
+        return JSONResponse({"detail": "เลือก engine 1-3 ตัว (sadtalker/liveportrait/syncso)"}, 400)
 
     user = getattr(request.state, "user", "")
     compare_id = uuid.uuid4().hex[:6]
@@ -1768,8 +1787,13 @@ def run_pipeline(job_id: str, params: dict, user: str, host: str):
                     input=f"System: {system}\n\nUser: {prompt}",
                     capture_output=True, text=True, timeout=30,
                 )
-                script = proc.stdout.strip() if proc.returncode == 0 else f"สวัสดีค่ะ {topic}"
-            except Exception:
+                if proc.returncode == 0 and proc.stdout.strip():
+                    script = proc.stdout.strip()
+                else:
+                    log.warn("claude_fallback", reason="returncode=" + str(proc.returncode))
+                    script = f"สวัสดีค่ะ {topic}"
+            except Exception as e:
+                log.warn("claude_fallback", reason=str(e)[:100])
                 script = f"สวัสดีค่ะ {topic}"
 
         job["stages"]["script"] = "done"
@@ -1789,7 +1813,7 @@ def run_pipeline(job_id: str, params: dict, user: str, host: str):
         proc = subprocess.run(tts_cmd, capture_output=True, text=True, timeout=60)
         if proc.returncode != 0:
             job["status"] = "error"
-            job["error"] = "TTS failed"
+            job["error"] = f"TTS failed: {(proc.stderr or '')[-200:]}"
             return
 
         job["stages"]["voice"] = "done"
@@ -1941,7 +1965,9 @@ def run_pipeline(job_id: str, params: dict, user: str, host: str):
 
             ffmpeg_cmd.extend(["-c:v", "libx264", "-preset", "fast", "-c:a", "aac", output_path])
 
-            subprocess.run(ffmpeg_cmd, capture_output=True, timeout=120)
+            ff_proc = subprocess.run(ffmpeg_cmd, capture_output=True, timeout=120)
+            if ff_proc.returncode != 0:
+                log.warn("ffmpeg_failed", fmt=fmt, error=ff_proc.stderr[-200:] if ff_proc.stderr else "unknown")
 
             if Path(output_path).exists():
                 final_outputs[fmt] = f"/outputs/{output_name}"
