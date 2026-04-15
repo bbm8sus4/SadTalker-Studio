@@ -1493,7 +1493,7 @@ async function generate(){
   // Validate
   if(!hasPerm('generate')){toast('บัญชีนี้ไม่มีสิทธิ์สร้างวิดีโอ','warn');return;}
   const mode=$('aMode').value,txt=$('text').value.trim();
-  if(mode==='tts'&&!txt){toast('พิมพ์ข้อความที่ต้องการให้พูดก่อนนะ','warn');return;}
+  if((mode==='tts'||mode==='cbclone'||mode==='clone')&&!txt){toast('พิมพ์ข้อความที่ต้องการให้พูดก่อนนะ','warn');return;}
   if(mode==='file'&&!upAud){toast('อัปโหลดไฟล์เสียงก่อนนะ','warn');return;}
   if(!selImg&&!upImg){toast('เลือกรูปหน้าก่อน โดยอัปโหลดหรือเลือกจากตัวอย่าง','warn');return;}
 
@@ -1558,8 +1558,38 @@ async function confirmGenerate(){
   $('ebox').style.display='none';
 
   const fd=new FormData();
-  if(mode==='tts'){fd.append('text',txt);fd.append('voice',$('voice').value);fd.append('rate',$('rate').value);fd.append('pitch',$('pitch').value);}
-  else fd.append('audio',upAud);
+  if(mode==='tts'){
+    fd.append('text',txt);fd.append('voice',$('voice').value);fd.append('rate',$('rate').value);fd.append('pitch',$('pitch').value);
+  }else if(mode==='cbclone'){
+    // Chatterbox: generate audio first, then use as uploaded audio
+    toast('กำลังสร้างเสียง clone...','info');
+    try{
+      const cbRef=$('cbVoice').value;
+      const r=await fetch('/api/voice-clone-local',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:txt,ref_audio:cbRef})});
+      if(!r.ok){const e=await r.json();throw new Error(e.detail||'Voice clone failed');}
+      const d=await r.json();
+      // Fetch the generated audio and attach as file
+      const audioResp=await fetch(d.audio_url);
+      const audioBlob=await audioResp.blob();
+      fd.append('audio',audioBlob,d.filename);
+    }catch(e){toast(errLog.handle('voiceClone',e),'error');return;}
+  }else if(mode==='clone'){
+    // ElevenLabs: generate audio first
+    const cloneVoiceId=$('cloneVoice').value;
+    if(!cloneVoiceId){toast('เลือกเสียง clone ก่อน','warn');return;}
+    toast('กำลังสร้างเสียง clone (ElevenLabs)...','info');
+    try{
+      const r=await fetch('/api/voice-clone-tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:txt,voice_id:cloneVoiceId})});
+      if(!r.ok){const e=await r.json();throw new Error(e.detail||'ElevenLabs clone failed');}
+      const d=await r.json();
+      const audioResp=await fetch(d.audio_url);
+      const audioBlob=await audioResp.blob();
+      fd.append('audio',audioBlob,d.filename);
+    }catch(e){toast(errLog.handle('elevenClone',e),'error');return;}
+  }else{
+    if(!upAud){toast('อัปโหลดไฟล์เสียงก่อน','warn');return;}
+    fd.append('audio',upAud);
+  }
   if(upImg)fd.append('image',upImg);else fd.append('example_image',selImg);
   fd.append('engine',$('engineChip').value);
   fd.append('preset',preset);fd.append('preprocess',$('preproc').value);

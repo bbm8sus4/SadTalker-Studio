@@ -1203,18 +1203,24 @@ VOICE_CLONES_DIR.mkdir(exist_ok=True)
 _chatterbox_model = None
 
 
+_chatterbox_lock = threading.Lock()
+
 def get_chatterbox():
-    """Lazy-load Chatterbox model (heavy, load once)."""
+    """Lazy-load Chatterbox model. Retries on failure (not cached as None)."""
     global _chatterbox_model
-    if _chatterbox_model is None:
+    if _chatterbox_model is not None:
+        return _chatterbox_model
+    with _chatterbox_lock:
+        if _chatterbox_model is not None:
+            return _chatterbox_model  # another thread loaded it
         try:
             from chatterbox.tts import ChatterboxTTS
             _chatterbox_model = ChatterboxTTS.from_pretrained(device="cpu")
             log.info("chatterbox_loaded")
+            return _chatterbox_model
         except Exception as e:
             log.error("chatterbox_load_failed", error=str(e))
-            return None
-    return _chatterbox_model
+            return None  # NOT cached — will retry next call
 
 
 @app.post("/api/voice-clone-local")

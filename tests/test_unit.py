@@ -172,8 +172,8 @@ class TestUploadValidation:
 
 class TestPresets:
 
-    def test_should_have_four_builtin_presets(self):
-        assert set(PRESETS.keys()) == {"draft", "standard", "hq", "marketing"}
+    def test_should_have_three_builtin_presets(self):
+        assert set(PRESETS.keys()) == {"draft", "standard", "hq"}
 
     def test_should_have_required_fields_in_each_preset(self):
         required = {"preprocess", "size", "enhancer", "still", "expression_scale", "label", "desc"}
