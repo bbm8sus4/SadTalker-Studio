@@ -1196,6 +1196,114 @@ async def api_voice_clone_upload(
         return JSONResponse({"detail": str(e)}, 500)
 
 
+# ─── Chatterbox Voice Clone (free, local) ────────────────────
+
+VOICE_CLONES_DIR = APP_DIR / "voice_clones"
+VOICE_CLONES_DIR.mkdir(exist_ok=True)
+_chatterbox_model = None
+
+
+def get_chatterbox():
+    """Lazy-load Chatterbox model (heavy, load once)."""
+    global _chatterbox_model
+    if _chatterbox_model is None:
+        try:
+            from chatterbox.tts import ChatterboxTTS
+            _chatterbox_model = ChatterboxTTS.from_pretrained(device="cpu")
+            log.info("chatterbox_loaded")
+        except Exception as e:
+            log.error("chatterbox_load_failed", error=str(e))
+            return None
+    return _chatterbox_model
+
+
+@app.post("/api/voice-clone-local")
+async def api_voice_clone_local(request: Request):
+    """Generate speech with cloned voice using Chatterbox (free, local)."""
+    if not check_perm(getattr(request.state, "role", ""), "generate"):
+        return JSONResponse({"detail": "ไม่มีสิทธิ์"}, 403)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"detail": "Invalid JSON"}, 400)
+
+    text = body.get("text", "").strip()
+    ref_audio = body.get("ref_audio", "")  # filename in voice_clones/ or uploads/
+    if not text:
+        return JSONResponse({"detail": "ต้องระบุ text"}, 400)
+    if len(text) > MAX_TEXT_LENGTH:
+        return JSONResponse({"detail": f"ข้อความยาวเกิน {MAX_TEXT_LENGTH} ตัวอักษร"}, 400)
+
+    model = get_chatterbox()
+    if not model:
+        return JSONResponse({"detail": "Chatterbox model โหลดไม่ได้"}, 500)
+
+    # Resolve reference audio path
+    ref_path = None
+    if ref_audio:
+        ref_path = safe_path(VOICE_CLONES_DIR, ref_audio) or safe_path(UPLOAD_DIR, ref_audio)
+        if not ref_path or not ref_path.exists():
+            return JSONResponse({"detail": "ไม่พบไฟล์เสียงอ้างอิง"}, 400)
+
+    user = getattr(request.state, "user", "")
+    audit(user, getattr(request.state, "role", ""), "voice_clone_local", detail=f"ref={ref_audio}")
+
+    try:
+        import torchaudio
+        if ref_path:
+            wav = model.generate(text, audio_prompt_path=str(ref_path))
+        else:
+            wav = model.generate(text)
+
+        audio_name = f"cb_{uuid.uuid4().hex[:8]}.wav"
+        audio_path = UPLOAD_DIR / audio_name
+        torchaudio.save(str(audio_path), wav, model.sr)
+        return {"audio_url": f"/uploads/{audio_name}", "filename": audio_name}
+    except Exception as e:
+        log.error("chatterbox_generate_failed", error=str(e))
+        return JSONResponse({"detail": f"สร้างเสียงไม่สำเร็จ: {str(e)[:100]}"}, 500)
+
+
+@app.post("/api/voice-clone-save")
+async def api_voice_clone_save(
+    request: Request,
+    name: str = Form(...),
+    audio: UploadFile = File(...),
+):
+    """Save reference audio for future voice cloning."""
+    if not check_perm(getattr(request.state, "role", ""), "generate"):
+        return JSONResponse({"detail": "ไม่มีสิทธิ์"}, 403)
+
+    content = await audio.read()
+    if len(content) < 5000:
+        return JSONResponse({"detail": "ไฟล์เสียงสั้นเกินไป ต้องอย่างน้อย 5 วินาที"}, 400)
+    if len(content) > MAX_UPLOAD_BYTES:
+        return JSONResponse({"detail": f"ไฟล์ใหญ่เกิน {MAX_UPLOAD_BYTES // 1024 // 1024} MB"}, 400)
+
+    safe_name = re.sub(r'[^\w\-.]', '_', name.strip())
+    if not safe_name:
+        return JSONResponse({"detail": "ชื่อไม่ถูกต้อง"}, 400)
+
+    ext = Path(audio.filename).suffix.lower() or ".wav"
+    filename = f"{safe_name}{ext}"
+    filepath = VOICE_CLONES_DIR / filename
+    filepath.write_bytes(content)
+
+    user = getattr(request.state, "user", "")
+    audit(user, getattr(request.state, "role", ""), "voice_save", detail=f"name={safe_name}")
+    return {"ok": True, "filename": filename, "name": safe_name}
+
+
+@app.get("/api/voice-clones-local")
+async def api_voice_clones_local():
+    """List saved reference voices."""
+    voices = []
+    for f in sorted(VOICE_CLONES_DIR.glob("*")):
+        if f.suffix.lower() in (".wav", ".mp3", ".m4a", ".ogg"):
+            voices.append({"filename": f.name, "name": f.stem, "size_bytes": f.stat().st_size})
+    return voices
+
+
 # ─── Sync.so Engine (cloud lip-sync API) ─────────────────────
 
 SYNC_API_KEY = os.environ.get("SYNC_API_KEY", "")

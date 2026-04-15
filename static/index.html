@@ -550,6 +550,7 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
               <label class="fl">แหล่งเสียง</label>
               <select class="fs" id="aMode" onchange="togAudio()">
                 <option value="tts">พิมพ์ข้อความ (TTS ฟรี)</option>
+                <option value="cbclone">Voice Clone ฟรี (Chatterbox)</option>
                 <option value="clone">Voice Clone (ElevenLabs $)</option>
                 <option value="file">อัปโหลดไฟล์เสียง</option>
               </select>
@@ -578,6 +579,26 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
                 </div>
               </div>
             </div>
+            <!-- Chatterbox Voice Clone (free) -->
+            <div id="secCB" style="display:none;">
+              <div class="fg">
+                <label class="fl">เลือกเสียงที่บันทึกไว้</label>
+                <select class="fs" id="cbVoice"><option value="">ไม่ใช้ (เสียง default)</option></select>
+              </div>
+              <div style="margin-top:10px;padding:10px;border-radius:8px;background:var(--bg2);font-size:.82rem;color:var(--text2);">
+                <strong>บันทึกเสียงใหม่:</strong> อัปโหลดเสียงคนที่ต้องการ (5 วิ ขึ้นไป)
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                  <input class="fi" type="text" id="cbName" placeholder="ชื่อ เช่น เสียงบอส" style="flex:1;">
+                  <div class="uzone" id="cbAudUp" onclick="Q('#cbAudIn').click()" style="flex:1;padding:8px;font-size:.8rem;">
+                    เลือกไฟล์เสียง
+                    <input type="file" id="cbAudIn" accept="audio/*" style="display:none;" onchange="this.parentElement.textContent=this.files[0]?.name||'เลือกไฟล์เสียง'">
+                  </div>
+                  <button class="btn btn-g btn-sm" onclick="saveCBVoice()">บันทึก</button>
+                </div>
+              </div>
+              <div style="margin-top:8px;font-size:.78rem;color:var(--green);">ฟรี 100% — รันในเครื่อง ไม่ต้องอินเทอร์เน็ต</div>
+            </div>
+
             <div id="secFile" style="display:none;">
               <div class="uzone" id="audUp" onclick="Q('#audIn').click()">
                 อัปโหลดเสียง (.mp3 / .wav)
@@ -1408,9 +1429,11 @@ function onImg(){
 function togAudio(){
   const m=$('aMode').value;
   $('secTTS').style.display=m==='tts'?'block':'none';
-  $('secFile').style.display=m==='file'?'block':'none';
+  $('secCB').style.display=m==='cbclone'?'block':'none';
   $('secClone').style.display=m==='clone'?'block':'none';
+  $('secFile').style.display=m==='file'?'block':'none';
   if(m==='clone')loadCloneVoices();
+  if(m==='cbclone')loadCBVoices();
 }
 async function loadCloneVoices(){
   try{
@@ -1434,6 +1457,29 @@ async function createClone(){
     toast('Clone เสียง "'+name+'" สำเร็จ!','success');
     loadCloneVoices();
   }catch(e){toast(errLog.handle('createClone',e),'error');}
+}
+/* ── Chatterbox (free local) ── */
+async function loadCBVoices(){
+  try{
+    const voices=await api.get('/api/voice-clones-local');
+    const sel=$('cbVoice');sel.innerHTML='<option value="">ไม่ใช้ (เสียง default)</option>';
+    for(const v of voices)sel.innerHTML+=`<option value="${esc(v.filename)}">${esc(v.name)}</option>`;
+  }catch(e){}
+}
+async function saveCBVoice(){
+  const name=$('cbName').value.trim();
+  const file=$('cbAudIn').files[0];
+  if(!name){toast('ตั้งชื่อเสียงก่อน','warn');return;}
+  if(!file){toast('เลือกไฟล์เสียงก่อน','warn');return;}
+  toast('กำลังบันทึกเสียง...','info');
+  const fd=new FormData();fd.append('name',name);fd.append('audio',file);
+  try{
+    const r=await fetch('/api/voice-clone-save',{method:'POST',body:fd});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.detail||'Error');
+    toast('บันทึกเสียง "'+name+'" แล้ว!','success');
+    loadCBVoices();$('cbName').value='';
+  }catch(e){toast(errLog.handle('saveCBVoice',e),'error');}
 }
 function onAud(){
   const f=$('audIn').files[0];if(!f)return;upAud=f;
