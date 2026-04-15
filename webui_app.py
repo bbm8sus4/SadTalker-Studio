@@ -1375,6 +1375,306 @@ async def api_anonymize(request: Request):
     return {"ok": True, "message": "คำขอถูกบันทึกแล้ว ผู้ดูแลจะดำเนินการภายใน 30 วัน"}
 
 
+# ─── Pipeline: Full video production (Stage 1-4) ─────────────
+
+SCRIPT_TEMPLATES = {
+    "ขายของ": "เขียนบทพูดขายสินค้า '{topic}' ความยาว {duration} วินาที โทนกระตุ้นให้ซื้อ มี hook เปิด + จุดเด่นสินค้า + CTA ปิด",
+    "แนะนำตัว": "เขียนบทแนะนำตัว '{topic}' ความยาว {duration} วินาที โทนเป็นมิตร น่าเชื่อถือ",
+    "รีวิว": "เขียนบทรีวิว '{topic}' ความยาว {duration} วินาที โทนจริงใจ ใช้แล้วดียังไง",
+    "สอน": "เขียนบทสอน '{topic}' ความยาว {duration} วินาที อธิบายง่าย เป็นขั้นตอน",
+    "ข่าว": "เขียนบทอ่านข่าว '{topic}' ความยาว {duration} วินาที โทนน่าเชื่อถือ เป็นทางการ",
+    "ทักทาย": "เขียนบทพูดต้อนรับ '{topic}' ความยาว {duration} วินาที อบอุ่น เป็นกันเอง",
+}
+
+MUSIC_DIR = APP_DIR / "static" / "music"
+LOGO_DIR = APP_DIR / "static" / "logos"
+MUSIC_DIR.mkdir(exist_ok=True)
+LOGO_DIR.mkdir(exist_ok=True)
+
+
+@app.get("/api/templates")
+async def api_templates():
+    return {k: v for k, v in SCRIPT_TEMPLATES.items()}
+
+
+@app.post("/api/pipeline")
+async def api_pipeline(request: Request):
+    """Full pipeline: Script → Voice → Face → Post-production."""
+    if not check_perm(getattr(request.state, "role", ""), "generate"):
+        return JSONResponse({"detail": "ไม่มีสิทธิ์"}, 403)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"detail": "Invalid JSON"}, 400)
+
+    user = getattr(request.state, "user", "")
+    role = getattr(request.state, "role", "")
+    job_id = uuid.uuid4().hex[:8]
+
+    jobs[job_id] = {
+        "status": "running", "step": "pipeline_start", "progress": 0,
+        "created": time.time(), "owner": user, "engine": "pipeline",
+        "stages": {},
+    }
+
+    thread = threading.Thread(target=run_pipeline, args=(job_id, body, user, request.headers.get("host", "localhost:8000")), daemon=True)
+    thread.start()
+    audit(user, role, "pipeline", target=job_id)
+    return {"job_id": job_id}
+
+
+def run_pipeline(job_id: str, params: dict, user: str, host: str):
+    """Full pipeline worker: 4 stages."""
+    job = jobs[job_id]
+    try:
+        topic = params.get("topic", "")
+        template = params.get("template", "ขายของ")
+        duration = params.get("duration", 15)
+        voice = params.get("voice", "th-TH-PremwadeeNeural")
+        rate = params.get("rate", "+0%")
+        pitch = params.get("pitch", "+0Hz")
+        engine = params.get("engine", "sadtalker")
+        image_name = params.get("image", "")
+        custom_script = params.get("script", "")
+        add_subtitle = params.get("subtitle", True)
+        add_logo = params.get("logo", "")
+        add_music = params.get("music", "")
+        crop_formats = params.get("formats", ["16:9"])
+
+        # ═══ STAGE 1: Script ═══
+        job["step"] = "script"
+        job["progress"] = 5
+        job["stages"]["script"] = "running"
+
+        if custom_script:
+            script = custom_script
+        else:
+            # Use Claude to write script
+            prompt_template = SCRIPT_TEMPLATES.get(template, SCRIPT_TEMPLATES["ขายของ"])
+            prompt = prompt_template.format(topic=topic, duration=duration)
+            system = "คุณเป็นนักเขียนบทพูดสำหรับวิดีโอ ตอบเป็นบทพูดเท่านั้น ไม่ต้องอธิบาย"
+            try:
+                proc = subprocess.run(
+                    ["claude", "--print", "--dangerously-skip-permissions"],
+                    input=f"System: {system}\n\nUser: {prompt}",
+                    capture_output=True, text=True, timeout=30,
+                )
+                script = proc.stdout.strip() if proc.returncode == 0 else f"สวัสดีค่ะ {topic}"
+            except Exception:
+                script = f"สวัสดีค่ะ {topic}"
+
+        job["stages"]["script"] = "done"
+        job["script"] = script
+        job["progress"] = 15
+
+        # ═══ STAGE 2: Voice (TTS) ═══
+        job["step"] = "voice"
+        job["stages"]["voice"] = "running"
+        audio_path = str(UPLOAD_DIR / f"{job_id}_pipe_audio.mp3")
+
+        tts_cmd = [
+            str(APP_DIR / "venv" / "bin" / "edge-tts"),
+            "--voice", voice, "--rate", rate, "--pitch", pitch,
+            "--text", script, "--write-media", audio_path,
+        ]
+        proc = subprocess.run(tts_cmd, capture_output=True, text=True, timeout=60)
+        if proc.returncode != 0:
+            job["status"] = "error"
+            job["error"] = "TTS failed"
+            return
+
+        job["stages"]["voice"] = "done"
+        job["progress"] = 25
+
+        # ═══ STAGE 3: Face Video ═══
+        job["step"] = "face"
+        job["stages"]["face"] = "running"
+
+        # Resolve image
+        if image_name:
+            img_path = safe_path(EXAMPLES_DIR, image_name)
+            if not img_path or not img_path.exists():
+                img_path = safe_path(UPLOAD_DIR, image_name)
+            if not img_path or not img_path.exists():
+                job["status"] = "error"
+                job["error"] = "Image not found"
+                return
+            img_str = str(img_path)
+        else:
+            job["status"] = "error"
+            job["error"] = "No image selected"
+            return
+
+        video_path = str(OUTPUT_DIR / f"{job_id}_face.mp4")
+
+        if engine == "syncso" and SYNC_API_KEY:
+            # Cloud: Sync.so
+            scheme = "https" if "cloudflare" in host or "trycloudflare" in host else "http"
+            base_url = f"{scheme}://{host}"
+            # Copy files to uploads for public access
+            aud_name = f"{job_id}_sync_audio.mp3"
+            im_name = f"{job_id}_sync_img{Path(img_str).suffix}"
+            shutil.copy2(audio_path, str(UPLOAD_DIR / aud_name))
+            shutil.copy2(img_str, str(UPLOAD_DIR / im_name))
+
+            with httpx.Client(timeout=30) as client:
+                resp = client.post(f"{SYNC_API_URL}/lipsync", json={
+                    "audioUrl": f"{base_url}/uploads/{aud_name}",
+                    "videoUrl": f"{base_url}/uploads/{im_name}",
+                    "model": "sync-1.7.1-beta",
+                }, headers={"x-api-key": SYNC_API_KEY})
+                if resp.status_code not in (200, 201):
+                    # Fallback to SadTalker
+                    engine = "sadtalker"
+                else:
+                    sync_id = resp.json().get("id", "")
+                    for i in range(120):
+                        time.sleep(5)
+                        job["progress"] = min(70, 25 + i)
+                        with httpx.Client(timeout=15) as c2:
+                            r2 = c2.get(f"{SYNC_API_URL}/lipsync/{sync_id}", headers={"x-api-key": SYNC_API_KEY})
+                            if r2.status_code == 200:
+                                d = r2.json()
+                                if d.get("status") == "COMPLETED":
+                                    with httpx.Client(timeout=60) as c3:
+                                        dl = c3.get(d["videoUrl"])
+                                        Path(video_path).write_bytes(dl.content)
+                                    break
+                                elif d.get("status") == "FAILED":
+                                    engine = "sadtalker"
+                                    break
+
+        if engine in ("sadtalker", "liveportrait") or not Path(video_path).exists():
+            # Local: SadTalker
+            venv_python = str(APP_DIR / "venv" / "bin" / "python")
+            cmd = [
+                venv_python, str(APP_DIR / "inference.py"),
+                "--driven_audio", audio_path,
+                "--source_image", img_str,
+                "--result_dir", str(OUTPUT_DIR / f"pipe_{job_id}"),
+                "--preprocess", "crop", "--still",
+            ]
+            proc = subprocess.run(cmd, cwd=str(APP_DIR), capture_output=True, text=True, timeout=900)
+            if proc.returncode == 0:
+                vids = sorted(Path(str(OUTPUT_DIR / f"pipe_{job_id}")).rglob("*.mp4"), key=lambda f: f.stat().st_mtime, reverse=True)
+                if vids:
+                    shutil.copy2(str(vids[0]), video_path)
+                shutil.rmtree(str(OUTPUT_DIR / f"pipe_{job_id}"), ignore_errors=True)
+
+        if not Path(video_path).exists():
+            job["status"] = "error"
+            job["error"] = "Face video generation failed"
+            return
+
+        job["stages"]["face"] = "done"
+        job["progress"] = 75
+
+        # ═══ STAGE 4: Post-production (ffmpeg) ═══
+        job["step"] = "post"
+        job["stages"]["post"] = "running"
+
+        final_outputs = {}
+
+        for fmt in crop_formats:
+            output_name = f"{job_id}_{fmt.replace(':','x')}.mp4"
+            output_path = str(OUTPUT_DIR / output_name)
+
+            ffmpeg_cmd = ["ffmpeg", "-y", "-i", video_path]
+
+            # Add background music if specified
+            music_file = MUSIC_DIR / add_music if add_music else None
+            if music_file and music_file.exists():
+                ffmpeg_cmd.extend(["-i", str(music_file)])
+
+            # Build filter chain
+            filters = []
+
+            # Crop/pad to aspect ratio
+            if fmt == "9:16":
+                filters.append("crop=ih*9/16:ih")
+            elif fmt == "1:1":
+                filters.append("crop=min(iw\\,ih):min(iw\\,ih)")
+            # 16:9 is usually the default
+
+            # Burn subtitles
+            if add_subtitle and script:
+                # Create SRT file
+                srt_path = str(UPLOAD_DIR / f"{job_id}.srt")
+                words = script.split()
+                srt_lines = []
+                words_per_chunk = 8
+                est_sec = len(script) / 6  # Thai ~6 chars/sec
+                chunk_dur = est_sec / max(1, len(words) / words_per_chunk)
+                t = 0
+                idx = 1
+                for i in range(0, len(words), words_per_chunk):
+                    chunk = " ".join(words[i:i+words_per_chunk])
+                    start_t = f"00:00:{t:05.2f}".replace(".", ",")
+                    end_t = f"00:00:{t+chunk_dur:05.2f}".replace(".", ",")
+                    srt_lines.append(f"{idx}\n{start_t} --> {end_t}\n{chunk}\n")
+                    t += chunk_dur
+                    idx += 1
+                Path(srt_path).write_text("\n".join(srt_lines), encoding="utf-8")
+                filters.append(f"subtitles={srt_path}:force_style='FontSize=14,PrimaryColour=&Hffffff,BorderStyle=4,BackColour=&H80000000,Alignment=2'")
+
+            # Build filter string
+            if filters:
+                ffmpeg_cmd.extend(["-vf", ",".join(filters)])
+
+            # Mix audio
+            if music_file and music_file.exists():
+                ffmpeg_cmd.extend(["-filter_complex", "[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=2[a]", "-map", "0:v", "-map", "[a]"])
+
+            # Logo overlay
+            logo_file = LOGO_DIR / add_logo if add_logo else None
+            if logo_file and logo_file.exists():
+                ffmpeg_cmd.extend(["-i", str(logo_file)])
+
+            ffmpeg_cmd.extend(["-c:v", "libx264", "-preset", "fast", "-c:a", "aac", output_path])
+
+            subprocess.run(ffmpeg_cmd, capture_output=True, timeout=120)
+
+            if Path(output_path).exists():
+                final_outputs[fmt] = f"/outputs/{output_name}"
+
+        # If no post-production outputs, use raw face video
+        if not final_outputs:
+            raw_name = f"{job_id}_raw.mp4"
+            shutil.copy2(video_path, str(OUTPUT_DIR / raw_name))
+            final_outputs["16:9"] = f"/outputs/{raw_name}"
+
+        job["stages"]["post"] = "done"
+        job["progress"] = 95
+
+        # Save metadata
+        primary = list(final_outputs.values())[0]
+        primary_name = primary.split("/")[-1]
+        meta = {
+            "id": job_id, "filename": primary_name,
+            "created": datetime.now().isoformat(),
+            "text": script, "voice": voice, "image": image_name,
+            "engine": engine, "template": template,
+            "outputs": final_outputs,
+            "size_bytes": Path(str(OUTPUT_DIR / primary_name)).stat().st_size if Path(str(OUTPUT_DIR / primary_name)).exists() else 0,
+        }
+        (OUTPUT_DIR / f"{primary_name}.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2))
+
+        job["status"] = "done"
+        job["progress"] = 100
+        job["result"] = primary
+        job["filename"] = primary_name
+        job["outputs"] = final_outputs
+        job["meta"] = meta
+        log.info("pipeline_done", job_id=job_id, engine=engine, outputs=list(final_outputs.keys()))
+
+    except Exception as e:
+        job["status"] = "error"
+        job["error"] = str(e)
+        log.error("pipeline_failed", job_id=job_id, error=str(e))
+    finally:
+        job["finished_at"] = time.time()
+
+
 # ─── Frontend (protected) ────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)

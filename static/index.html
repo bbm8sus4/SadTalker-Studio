@@ -454,9 +454,13 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
 
   <div class="sb-label">สร้าง</div>
   <ul class="sb-menu">
+    <li onclick="go('pipeline')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+      สร้างแบบครบขั้นตอน
+    </li>
     <li class="on" onclick="go('create')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16"/></svg>
-      สร้างวิดีโอ
+      สร้างวิดีโอ (เร็ว)
     </li>
     <li onclick="go('settings')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -852,6 +856,153 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
 
     </div>
 
+    <!-- PAGE: PIPELINE WIZARD -->
+    <div class="pg" id="pg-pipeline">
+      <!-- Progress steps -->
+      <div style="display:flex;gap:4px;margin-bottom:20px;flex-wrap:wrap;">
+        <div class="chip on" id="ps1" style="flex:1;text-align:center;pointer-events:none;">1. บทพูด</div>
+        <div class="chip" id="ps2" style="flex:1;text-align:center;pointer-events:none;">2. เสียง</div>
+        <div class="chip" id="ps3" style="flex:1;text-align:center;pointer-events:none;">3. รูปหน้า</div>
+        <div class="chip" id="ps4" style="flex:1;text-align:center;pointer-events:none;">4. ตัดต่อ</div>
+        <div class="chip" id="ps5" style="flex:1;text-align:center;pointer-events:none;">5. เสร็จ</div>
+      </div>
+
+      <!-- Step 1: Script -->
+      <div id="pipeStep1" class="card">
+        <div class="card-h">STAGE 1 — บทพูด <span style="color:var(--green);font-size:.7rem;">ฟรี (Claude)</span></div>
+        <div class="fg">
+          <label class="fl">ประเภท</label>
+          <select class="fs" id="pipeTpl">
+            <option value="ขายของ">ขายของ / โปรโมท</option>
+            <option value="แนะนำตัว">แนะนำตัว</option>
+            <option value="รีวิว">รีวิว</option>
+            <option value="สอน">สอนใช้งาน</option>
+            <option value="ข่าว">อ่านข่าว</option>
+            <option value="ทักทาย">ทักทาย / ต้อนรับ</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label class="fl">หัวข้อ / สินค้า</label>
+          <input class="fi" id="pipeTopic" placeholder="เช่น ครีมกันแดด SPF50+">
+        </div>
+        <div class="fg">
+          <label class="fl">ความยาว (วินาที)</label>
+          <select class="fs" id="pipeDur">
+            <option value="10">10 วิ (สั้น)</option>
+            <option value="15" selected>15 วิ (ปกติ)</option>
+            <option value="30">30 วิ (ยาว)</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label class="fl">หรือเขียนบทเอง</label>
+          <textarea class="fi" id="pipeScript" rows="3" placeholder="เว้นว่างไว้ถ้าให้ Claude เขียนให้"></textarea>
+        </div>
+        <button class="btn btn-g" style="width:100%;justify-content:center;margin-top:10px;" onclick="pipeNext(2)">ถัดไป →</button>
+      </div>
+
+      <!-- Step 2: Voice -->
+      <div id="pipeStep2" class="card" style="display:none;">
+        <div class="card-h">STAGE 2 — เสียง <span style="color:var(--green);font-size:.7rem;">ฟรี (Edge TTS)</span></div>
+        <div class="gr gr-3">
+          <div class="fg">
+            <label class="fl">เสียงพูด</label>
+            <select class="fs" id="pipeVoice">
+              <option value="th-TH-PremwadeeNeural">ผู้หญิงไทย</option>
+              <option value="th-TH-NiwatNeural">ผู้ชายไทย</option>
+              <option value="en-US-JennyNeural">English Female</option>
+              <option value="en-US-GuyNeural">English Male</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label class="fl">ความเร็ว</label>
+            <select class="fs" id="pipeRate">
+              <option value="-15%">ช้า</option>
+              <option value="+0%" selected>ปกติ</option>
+              <option value="+15%">เร็ว</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label class="fl">ระดับเสียง</label>
+            <select class="fs" id="pipePitch">
+              <option value="-10Hz">ต่ำ</option>
+              <option value="+0Hz" selected>ปกติ</option>
+              <option value="+10Hz">สูง</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button class="btn btn-o" style="flex:1;justify-content:center;" onclick="pipeNext(1)">← ย้อนกลับ</button>
+          <button class="btn btn-g" style="flex:1;justify-content:center;" onclick="pipeNext(3)">ถัดไป →</button>
+        </div>
+      </div>
+
+      <!-- Step 3: Face + Engine -->
+      <div id="pipeStep3" class="card" style="display:none;">
+        <div class="card-h">STAGE 3 — รูปหน้า + Engine</div>
+        <div class="fg">
+          <label class="fl">เลือก Engine</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <label style="flex:1;padding:12px;border:2px solid var(--border);border-radius:10px;cursor:pointer;text-align:center;" onclick="pickPipeEngine('sadtalker',this)">
+              <input type="radio" name="pipeEng" value="sadtalker" checked style="display:none;">
+              <div style="font-weight:700;">SadTalker</div>
+              <div style="font-size:.75rem;color:var(--green);">ฟรี ~2 นาที</div>
+            </label>
+            <label style="flex:1;padding:12px;border:2px solid var(--border);border-radius:10px;cursor:pointer;text-align:center;" onclick="pickPipeEngine('liveportrait',this)">
+              <input type="radio" name="pipeEng" value="liveportrait" style="display:none;">
+              <div style="font-weight:700;">LivePortrait</div>
+              <div style="font-size:.75rem;color:var(--green);">ฟรี ~5 นาที</div>
+            </label>
+            <label style="flex:1;padding:12px;border:2px solid var(--border);border-radius:10px;cursor:pointer;text-align:center;" onclick="pickPipeEngine('syncso',this)">
+              <input type="radio" name="pipeEng" value="syncso" style="display:none;">
+              <div style="font-weight:700;">Sync.so</div>
+              <div style="font-size:.75rem;color:var(--accent);">$3/นาที ~30 วิ</div>
+            </label>
+          </div>
+        </div>
+        <div class="fg" style="margin-top:12px;">
+          <label class="fl">เลือกรูปหน้า</label>
+          <div class="ig" id="pipeImgGrid" style="max-height:160px;"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button class="btn btn-o" style="flex:1;justify-content:center;" onclick="pipeNext(2)">← ย้อนกลับ</button>
+          <button class="btn btn-g" style="flex:1;justify-content:center;" onclick="pipeNext(4)">ถัดไป →</button>
+        </div>
+      </div>
+
+      <!-- Step 4: Post-production -->
+      <div id="pipeStep4" class="card" style="display:none;">
+        <div class="card-h">STAGE 4 — ตัดต่อ <span style="color:var(--green);font-size:.7rem;">ฟรี (ffmpeg)</span></div>
+        <div class="trow" style="border-bottom:1px solid var(--border);">
+          <span>ใส่ Subtitle อัตโนมัติ</span>
+          <div class="tg on" id="pipeSub" onclick="this.classList.toggle('on')"></div>
+        </div>
+        <div class="fg" style="margin-top:10px;">
+          <label class="fl">ขนาดวิดีโอ (เลือกได้หลายอัน)</label>
+          <div style="display:flex;gap:8px;">
+            <label style="flex:1;padding:10px;border:2px solid var(--accent);border-radius:8px;text-align:center;cursor:pointer;background:var(--accent-s);">
+              <input type="checkbox" value="16:9" checked style="display:none;"> <strong>16:9</strong><br><span style="font-size:.72rem;color:var(--muted);">YouTube</span>
+            </label>
+            <label style="flex:1;padding:10px;border:2px solid var(--border);border-radius:8px;text-align:center;cursor:pointer;" onclick="this.style.borderColor=this.style.borderColor==='var(--accent)'?'var(--border)':'var(--accent)';this.style.background=this.style.background==='var(--accent-s)'?'':'var(--accent-s)';">
+              <input type="checkbox" value="9:16" style="display:none;"> <strong>9:16</strong><br><span style="font-size:.72rem;color:var(--muted);">TikTok / Reels</span>
+            </label>
+            <label style="flex:1;padding:10px;border:2px solid var(--border);border-radius:8px;text-align:center;cursor:pointer;" onclick="this.style.borderColor=this.style.borderColor==='var(--accent)'?'var(--border)':'var(--accent)';this.style.background=this.style.background==='var(--accent-s)'?'':'var(--accent-s)';">
+              <input type="checkbox" value="1:1" style="display:none;"> <strong>1:1</strong><br><span style="font-size:.72rem;color:var(--muted);">Instagram</span>
+            </label>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px;">
+          <button class="btn btn-o" style="flex:1;justify-content:center;" onclick="pipeNext(3)">← ย้อนกลับ</button>
+          <button class="btn btn-g" style="flex:2;justify-content:center;font-size:1rem;" onclick="startPipeline()" id="pipeGoBtn">สร้างวิดีโอ</button>
+        </div>
+      </div>
+
+      <!-- Step 5: Result -->
+      <div id="pipeStep5" class="card" style="display:none;">
+        <div class="card-h" style="color:var(--green);">เสร็จแล้ว!</div>
+        <div id="pipeResults"></div>
+      </div>
+    </div>
+
     <!-- PAGE: PRIVACY (PDPA/GDPR) -->
     <div class="pg" id="pg-privacy">
 
@@ -1180,12 +1331,12 @@ async function init(){
 }
 
 /* ── Nav ── */
-const titles={create:'สร้างวิดีโอ',settings:'ตั้งค่า',history:'ประวัติ',uploads:'รูปที่อัปโหลด',presets:'จัดการ Preset',guide:'คู่มือการใช้งาน',privacy:'ความเป็นส่วนตัว'};
+const titles={pipeline:'สร้างแบบครบขั้นตอน',create:'สร้างวิดีโอ (เร็ว)',settings:'ตั้งค่า',history:'ประวัติ',uploads:'รูปที่อัปโหลด',presets:'จัดการ Preset',guide:'คู่มือการใช้งาน',privacy:'ความเป็นส่วนตัว'};
 function go(p){
   document.querySelectorAll('.pg').forEach(x=>x.classList.remove('on'));
   $('pg-'+p).classList.add('on');
   $('pageTitle').textContent=titles[p]||p;
-  const navMap={create:'สร้างวิดีโอ',settings:'ตั้งค่า',history:'ประวัติ',uploads:'รูปที่อัปโหลด',presets:'จัดการ Preset',guide:'คู่มือการใช้งาน',privacy:'ความเป็นส่วนตัว'};
+  const navMap={pipeline:'สร้างแบบครบขั้นตอน',create:'สร้างวิดีโอ (เร็ว)',settings:'ตั้งค่า',history:'ประวัติ',uploads:'รูปที่อัปโหลด',presets:'จัดการ Preset',guide:'คู่มือการใช้งาน',privacy:'ความเป็นส่วนตัว'};
   document.querySelectorAll('.sb-menu li').forEach(li=>{
     li.classList.remove('on');
     if(li.textContent.trim()===navMap[p])li.classList.add('on');
@@ -1421,6 +1572,104 @@ function updateBadge(){
 }
 
 function closeRes(){$('ovRes').classList.remove('show');}
+
+/* ── Pipeline Wizard ── */
+let pipeEngine='sadtalker',pipeImg='';
+
+function pipeNext(step){
+  for(let i=1;i<=5;i++){
+    const el=$('pipeStep'+i);if(el)el.style.display=i===step?'block':'none';
+    const ps=$('ps'+i);if(ps){ps.className='chip'+(i<=step?' on':'');}
+  }
+  // Load images for step 3
+  if(step===3&&$('pipeImgGrid').children.length===0){
+    api.get('/api/examples',{cache:true}).then(imgs=>{
+      const ig=$('pipeImgGrid');
+      for(const i of imgs){
+        const el=document.createElement('img');
+        el.src=i.url;el.title=i.name;el.dataset.f=i.filename;el.loading='lazy';
+        el.onclick=()=>{pipeImg=i.filename;ig.querySelectorAll('img').forEach(x=>x.classList.remove('on'));el.classList.add('on');};
+        ig.appendChild(el);
+      }
+    }).catch(()=>{});
+  }
+}
+
+function pickPipeEngine(eng,el){
+  pipeEngine=eng;
+  el.closest('.fg').querySelectorAll('label').forEach(l=>l.style.borderColor='var(--border)');
+  el.style.borderColor='var(--accent)';
+}
+
+async function startPipeline(){
+  const topic=$('pipeTopic').value.trim();
+  const script=$('pipeScript').value.trim();
+  if(!topic&&!script){toast('กรอกหัวข้อหรือเขียนบทก่อน','warn');return;}
+  if(!pipeImg){toast('เลือกรูปหน้าก่อน','warn');return;}
+
+  const btn=$('pipeGoBtn');
+  btn.disabled=true;btn.textContent='กำลังสร้าง...';
+
+  // Collect format checkboxes
+  const formats=[];
+  $('pipeStep4').querySelectorAll('input[type=checkbox]').forEach(cb=>{
+    if(cb.closest('label').style.borderColor==='var(--accent)'||cb.checked)formats.push(cb.value);
+  });
+  if(!formats.length)formats.push('16:9');
+
+  const payload={
+    topic,
+    template:$('pipeTpl').value,
+    duration:parseInt($('pipeDur').value),
+    script:script||'',
+    voice:$('pipeVoice').value,
+    rate:$('pipeRate').value,
+    pitch:$('pipePitch').value,
+    engine:pipeEngine,
+    image:pipeImg,
+    subtitle:$('pipeSub').classList.contains('on'),
+    formats,
+  };
+
+  try{
+    const r=await fetch('/api/pipeline',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    if(!r.ok){const e=await r.json();throw new Error(e.detail||'Error');}
+    const d=await r.json();
+    // Show in job tracker
+    addJobBar(d.job_id,'Pipeline: '+topic.substring(0,20));
+    toast('เริ่มสร้างวิดีโอแล้ว! ดู progress ด้านบน','success');
+    // Also poll for pipeline-specific result
+    pollPipelineResult(d.job_id);
+  }catch(e){toast(errLog.handle('pipeline',e),'error');}
+
+  btn.disabled=false;btn.textContent='สร้างวิดีโอ';
+}
+
+function pollPipelineResult(jid){
+  const timer=setInterval(async()=>{
+    try{
+      const j=await(await fetch('/api/status/'+jid)).json();
+      if(j.status==='done'){
+        clearInterval(timer);
+        pipeNext(5);
+        const res=$('pipeResults');
+        res.innerHTML='';
+        const outputs=j.outputs||{};
+        for(const[fmt,url] of Object.entries(outputs)){
+          res.innerHTML+=`<div style="margin-bottom:14px;">
+            <div style="font-weight:600;margin-bottom:6px;">${esc(fmt)}</div>
+            <video src="${esc(url)}" controls style="width:100%;border-radius:10px;max-height:300px;"></video>
+            <a class="btn btn-sm btn-g" href="${esc(url)}" download style="margin-top:6px;">ดาวน์โหลด ${esc(fmt)}</a>
+          </div>`;
+        }
+        if(j.script)res.innerHTML+=`<div class="card" style="margin-top:14px;"><div class="card-h">บทพูด</div><div style="font-size:.88rem;line-height:1.7;">${esc(j.script)}</div></div>`;
+        res.innerHTML+=`<button class="btn btn-o" style="width:100%;justify-content:center;margin-top:14px;" onclick="pipeNext(1)">สร้างวิดีโอใหม่</button>`;
+        return;
+      }
+      if(j.status==='error'){clearInterval(timer);toast(j.error||'Pipeline failed','error');}
+    }catch(e){}
+  },3000);
+}
 
 /* ── AI Copilot ── */
 let lastAIScript='';
