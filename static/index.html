@@ -462,6 +462,14 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16"/></svg>
       สร้างวิดีโอ (เร็ว)
     </li>
+    <li onclick="go('batch')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="2" y="7" width="6" height="6" rx="1"/><rect x="9" y="7" width="6" height="6" rx="1"/><rect x="16" y="7" width="6" height="6" rx="1"/></svg>
+      Batch (หลายรูป)
+    </li>
+    <li onclick="go('compare')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="8" height="18" rx="1"/><rect x="13" y="3" width="8" height="18" rx="1"/></svg>
+      Compare Engine
+    </li>
     <li onclick="go('settings')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
       ตั้งค่า
@@ -895,6 +903,67 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
         </div>
       </div>
 
+    </div>
+
+    <!-- PAGE: COMPARE -->
+    <div class="pg" id="pg-compare">
+      <div class="card">
+        <div class="card-h">Compare — เทียบ Engine คู่กัน</div>
+        <p style="font-size:.86rem;color:var(--text2);margin-bottom:14px;">สร้างวิดีโอจากทุก engine พร้อมกัน แล้วเทียบผลลัพธ์</p>
+        <div class="fg">
+          <label class="fl">เลือก Engine ที่จะเทียบ</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <label style="flex:1;padding:10px;border:2px solid var(--accent);border-radius:8px;text-align:center;cursor:pointer;background:var(--accent-s);">
+              <input type="checkbox" value="sadtalker" checked class="cmpEng" style="display:none;"> <strong>SadTalker</strong><br><span style="font-size:.72rem;color:var(--green);">ฟรี ~2 นาที</span>
+            </label>
+            <label style="flex:1;padding:10px;border:2px solid var(--border);border-radius:8px;text-align:center;cursor:pointer;" onclick="this.style.borderColor=this.querySelector('input').checked?'var(--border)':'var(--accent)';this.style.background=this.querySelector('input').checked?'':'var(--accent-s)';this.querySelector('input').checked=!this.querySelector('input').checked;">
+              <input type="checkbox" value="liveportrait" class="cmpEng" style="display:none;"> <strong>LivePortrait</strong><br><span style="font-size:.72rem;color:var(--green);">ฟรี ~5 นาที</span>
+            </label>
+            <label style="flex:1;padding:10px;border:2px solid var(--border);border-radius:8px;text-align:center;cursor:pointer;" onclick="this.style.borderColor=this.querySelector('input').checked?'var(--border)':'var(--accent)';this.style.background=this.querySelector('input').checked?'':'var(--accent-s)';this.querySelector('input').checked=!this.querySelector('input').checked;">
+              <input type="checkbox" value="syncso" class="cmpEng" style="display:none;"> <strong>Sync.so</strong><br><span style="font-size:.72rem;color:var(--accent);">$3/นาที ~30 วิ</span>
+            </label>
+          </div>
+        </div>
+        <div class="fg">
+          <label class="fl">รูปหน้า</label>
+          <div class="ig" id="cmpImgGrid" style="max-height:120px;"></div>
+        </div>
+        <div class="fg">
+          <label class="fl">ข้อความ</label>
+          <textarea class="fi" id="cmpText" rows="2" placeholder="สวัสดีค่ะ ทดสอบเปรียบเทียบ engine"></textarea>
+        </div>
+        <button class="btn btn-g" style="width:100%;justify-content:center;margin-top:10px;" onclick="startCompare()" id="cmpGoBtn">เริ่มเปรียบเทียบ</button>
+      </div>
+      <div id="cmpResults" style="margin-top:16px;"></div>
+    </div>
+
+    <!-- PAGE: BATCH -->
+    <div class="pg" id="pg-batch">
+      <div class="card">
+        <div class="card-h">Batch — สร้างหลายวิดีโอจากหลายรูป</div>
+        <div class="fg">
+          <label class="fl">เลือกรูปหน้า (สูงสุด 10 รูป)</label>
+          <div class="ig" id="batchImgGrid" style="max-height:200px;"></div>
+          <div style="margin-top:6px;font-size:.78rem;color:var(--muted);">เลือกแล้ว: <strong id="batchCount">0</strong> รูป</div>
+        </div>
+        <div class="fg">
+          <label class="fl">ข้อความ (ทุกรูปใช้บทเดียวกัน)</label>
+          <textarea class="fi" id="batchText" rows="3" placeholder="เช่น สวัสดีค่ะ ยินดีต้อนรับ..."></textarea>
+        </div>
+        <div class="gr gr-3">
+          <div class="fg"><label class="fl">เสียง</label>
+            <select class="fs" id="batchVoice"><option value="th-TH-PremwadeeNeural">ผู้หญิงไทย</option><option value="th-TH-NiwatNeural">ผู้ชายไทย</option><option value="en-US-JennyNeural">English F</option></select>
+          </div>
+          <div class="fg"><label class="fl">Engine</label>
+            <select class="fs" id="batchEngine"><option value="sadtalker">SadTalker (ฟรี)</option><option value="syncso">Sync.so ($)</option></select>
+          </div>
+          <div class="fg"><label class="fl">ความยาว</label>
+            <select class="fs" id="batchDur"><option value="10">10 วิ</option><option value="15" selected>15 วิ</option><option value="30">30 วิ</option></select>
+          </div>
+        </div>
+        <button class="btn btn-g" style="width:100%;justify-content:center;margin-top:14px;font-size:1rem;" onclick="startBatch()" id="batchGoBtn">สร้าง Batch</button>
+      </div>
+      <div id="batchResults" style="margin-top:16px;"></div>
     </div>
 
     <!-- PAGE: PIPELINE WIZARD -->
@@ -1377,12 +1446,12 @@ async function init(){
 }
 
 /* ── Nav ── */
-const titles={pipeline:'สร้างแบบครบขั้นตอน',create:'สร้างวิดีโอ (เร็ว)',settings:'ตั้งค่า',history:'ประวัติ',uploads:'รูปที่อัปโหลด',presets:'จัดการ Preset',guide:'คู่มือการใช้งาน',privacy:'ความเป็นส่วนตัว'};
+const titles={pipeline:'สร้างแบบครบขั้นตอน',create:'สร้างวิดีโอ (เร็ว)',batch:'Batch (หลายรูป)',compare:'Compare Engine',settings:'ตั้งค่า',history:'ประวัติ',uploads:'รูปที่อัปโหลด',presets:'จัดการ Preset',guide:'คู่มือการใช้งาน',privacy:'ความเป็นส่วนตัว'};
 function go(p){
   document.querySelectorAll('.pg').forEach(x=>x.classList.remove('on'));
   $('pg-'+p).classList.add('on');
   $('pageTitle').textContent=titles[p]||p;
-  const navMap={pipeline:'สร้างแบบครบขั้นตอน',create:'สร้างวิดีโอ (เร็ว)',settings:'ตั้งค่า',history:'ประวัติ',uploads:'รูปที่อัปโหลด',presets:'จัดการ Preset',guide:'คู่มือการใช้งาน',privacy:'ความเป็นส่วนตัว'};
+  const navMap={pipeline:'สร้างแบบครบขั้นตอน',create:'สร้างวิดีโอ (เร็ว)',batch:'Batch (หลายรูป)',compare:'Compare Engine',settings:'ตั้งค่า',history:'ประวัติ',uploads:'รูปที่อัปโหลด',presets:'จัดการ Preset',guide:'คู่มือการใช้งาน',privacy:'ความเป็นส่วนตัว'};
   document.querySelectorAll('.sb-menu li').forEach(li=>{
     li.classList.remove('on');
     if(li.textContent.trim()===navMap[p])li.classList.add('on');
@@ -1390,6 +1459,8 @@ function go(p){
   if(p==='history')loadH();
   if(p==='uploads')loadUploads();
   if(p==='presets')loadCustomPresets();
+  if(p==='batch')initBatch();
+  if(p==='compare')initCompare();
   history.replaceState(null,'','#'+p);
 }
 function buildPresetUI(pr){
@@ -1463,6 +1534,122 @@ async function createClone(){
     loadCloneVoices();
   }catch(e){toast(errLog.handle('createClone',e),'error');}
 }
+/* ── Compare Mode ── */
+let cmpImg='';
+function initCompare(){
+  if($('cmpImgGrid').children.length>0)return;
+  api.get('/api/examples',{cache:true}).then(imgs=>{
+    const ig=$('cmpImgGrid');
+    for(const i of imgs){
+      const el=document.createElement('img');
+      el.src=i.url;el.title=i.name;el.dataset.f=i.filename;el.loading='lazy';
+      el.onclick=()=>{cmpImg=i.filename;ig.querySelectorAll('img').forEach(x=>x.classList.remove('on'));el.classList.add('on');};
+      ig.appendChild(el);
+    }
+  }).catch(()=>{});
+}
+async function startCompare(){
+  const txt=$('cmpText').value.trim();
+  if(!txt){toast('พิมพ์ข้อความก่อน','warn');return;}
+  if(!cmpImg){toast('เลือกรูปก่อน','warn');return;}
+  const engines=[];
+  document.querySelectorAll('.cmpEng:checked').forEach(cb=>engines.push(cb.value));
+  if(!engines.length){toast('เลือก engine อย่างน้อย 1 ตัว','warn');return;}
+
+  $('cmpGoBtn').disabled=true;$('cmpGoBtn').textContent='กำลังเปรียบเทียบ...';
+  try{
+    const r=await fetch('/api/compare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      engines,image:cmpImg,script:txt,topic:txt.substring(0,30),
+      template:'ทักทาย',duration:10,voice:'th-TH-PremwadeeNeural',rate:'+0%',pitch:'+0Hz',formats:['16:9'],
+    })});
+    if(!r.ok){const e=await r.json();throw new Error(e.detail||'Error');}
+    const d=await r.json();
+    toast(`เริ่มเปรียบเทียบ ${engines.length} engine แล้ว!`,'success');
+    // Track each job
+    for(const[eng,jid] of Object.entries(d.job_ids))addJobBar(jid,'Compare: '+eng);
+    // Poll for all results
+    pollCompareResults(d.job_ids);
+  }catch(e){toast(errLog.handle('compare',e),'error');}
+  $('cmpGoBtn').disabled=false;$('cmpGoBtn').textContent='เริ่มเปรียบเทียบ';
+}
+function pollCompareResults(jobIds){
+  const res=$('cmpResults');
+  res.innerHTML='<div class="card"><div class="card-h">กำลังสร้าง...</div></div>';
+  const results={};
+  const timer=setInterval(async()=>{
+    let allDone=true;
+    for(const[eng,jid] of Object.entries(jobIds)){
+      if(results[eng])continue;
+      try{
+        const j=await(await fetch('/api/status/'+jid)).json();
+        if(j.status==='done'){results[eng]=j;}
+        else if(j.status==='error'){results[eng]={error:j.error};}
+        else allDone=false;
+      }catch(e){allDone=false;}
+    }
+    if(allDone||Object.keys(results).length===Object.keys(jobIds).length){
+      clearInterval(timer);
+      res.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;">';
+      for(const[eng,j] of Object.entries(results)){
+        if(j.error){
+          res.innerHTML+=`<div class="card"><div class="card-h" style="color:var(--red);">${esc(eng)} — ล้มเหลว</div><p style="font-size:.84rem;">${esc(j.error)}</p></div>`;
+        }else{
+          const url=j.result||j.outputs?.['16:9']||'';
+          res.innerHTML+=`<div class="card"><div class="card-h" style="color:var(--green);">${esc(eng)}</div>
+            <video src="${esc(url)}" controls style="width:100%;border-radius:8px;"></video>
+            <a class="btn btn-sm btn-g" href="${esc(url)}" download style="margin-top:8px;">โหลด ${esc(eng)}</a></div>`;
+        }
+      }
+      res.innerHTML+='</div>';
+    }
+  },3000);
+}
+
+/* ── Batch Mode ── */
+let batchSelected=new Set();
+function initBatch(){
+  if($('batchImgGrid').children.length>0)return;
+  api.get('/api/examples',{cache:true}).then(imgs=>{
+    const ig=$('batchImgGrid');
+    for(const i of imgs){
+      const el=document.createElement('img');
+      el.src=i.url;el.title=i.name;el.dataset.f=i.filename;el.loading='lazy';
+      el.onclick=()=>{
+        if(batchSelected.has(i.filename)){batchSelected.delete(i.filename);el.classList.remove('on');}
+        else if(batchSelected.size<10){batchSelected.add(i.filename);el.classList.add('on');}
+        else{toast('สูงสุด 10 รูป','warn');}
+        $('batchCount').textContent=batchSelected.size;
+      };
+      ig.appendChild(el);
+    }
+  }).catch(()=>{});
+}
+async function startBatch(){
+  const txt=$('batchText').value.trim();
+  if(!txt){toast('พิมพ์ข้อความก่อน','warn');return;}
+  if(!batchSelected.size){toast('เลือกรูปอย่างน้อย 1 รูป','warn');return;}
+  $('batchGoBtn').disabled=true;$('batchGoBtn').textContent='กำลังสร้าง...';
+  try{
+    const r=await fetch('/api/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      images:[...batchSelected],
+      script:txt,
+      voice:$('batchVoice').value,
+      engine:$('batchEngine').value,
+      duration:parseInt($('batchDur').value),
+      template:'ขายของ',
+      topic:txt.substring(0,30),
+      formats:['16:9'],
+    })});
+    if(!r.ok){const e=await r.json();throw new Error(e.detail||'Error');}
+    const d=await r.json();
+    toast(`เริ่มสร้าง ${d.count} วิดีโอแล้ว!`,'success');
+    // Add job bars for each
+    d.job_ids.forEach((jid,i)=>addJobBar(jid,'Batch '+(i+1)+'/'+d.count));
+    $('batchResults').innerHTML=`<div class="card"><div class="card-h" style="color:var(--green);">กำลังสร้าง ${d.count} วิดีโอ — ดู progress ด้านบน</div><p style="font-size:.86rem;color:var(--text2);">สามารถไปทำงานอื่นได้ เสร็จแล้วจะมี toast แจ้ง</p></div>`;
+  }catch(e){toast(errLog.handle('batch',e),'error');}
+  $('batchGoBtn').disabled=false;$('batchGoBtn').textContent='สร้าง Batch';
+}
+
 /* ── Script Library ── */
 async function loadScriptLib(){
   const panel=$('scriptLibPanel');

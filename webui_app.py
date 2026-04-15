@@ -1637,6 +1637,75 @@ async def api_script_library():
     return {}
 
 
+@app.post("/api/batch")
+async def api_batch(request: Request):
+    """Batch: same script + multiple images → multiple videos."""
+    if not check_perm(getattr(request.state, "role", ""), "generate"):
+        return JSONResponse({"detail": "ไม่มีสิทธิ์"}, 403)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"detail": "Invalid JSON"}, 400)
+
+    images = body.get("images", [])
+    if not images or len(images) > 10:
+        return JSONResponse({"detail": "เลือกรูป 1-10 รูป"}, 400)
+
+    user = getattr(request.state, "user", "")
+    role = getattr(request.state, "role", "")
+    batch_id = uuid.uuid4().hex[:6]
+    job_ids = []
+
+    for i, img in enumerate(images):
+        job_id = f"batch_{batch_id}_{i}"
+        params = {**body, "image": img}
+        jobs[job_id] = {"status": "running", "step": "starting", "progress": 0, "created": time.time(), "owner": user, "engine": "pipeline", "batch": batch_id}
+        thread = threading.Thread(
+            target=run_pipeline,
+            args=(job_id, params, user, request.headers.get("host", "localhost:8000")),
+            daemon=True,
+        )
+        thread.start()
+        job_ids.append(job_id)
+
+    audit(user, role, "batch", detail=f"{len(images)} images, batch={batch_id}")
+    return {"batch_id": batch_id, "job_ids": job_ids, "count": len(images)}
+
+
+@app.post("/api/compare")
+async def api_compare(request: Request):
+    """Compare: same input → run multiple engines → side-by-side results."""
+    if not check_perm(getattr(request.state, "role", ""), "generate"):
+        return JSONResponse({"detail": "ไม่มีสิทธิ์"}, 403)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"detail": "Invalid JSON"}, 400)
+
+    engines = body.get("engines", ["sadtalker"])
+    if not engines or len(engines) > 3:
+        return JSONResponse({"detail": "เลือก engine 1-3 ตัว"}, 400)
+
+    user = getattr(request.state, "user", "")
+    compare_id = uuid.uuid4().hex[:6]
+    job_ids = {}
+
+    for eng in engines:
+        job_id = f"cmp_{compare_id}_{eng}"
+        params = {**body, "engine": eng}
+        jobs[job_id] = {"status": "running", "step": "starting", "progress": 0, "created": time.time(), "owner": user, "engine": eng, "compare": compare_id}
+        thread = threading.Thread(
+            target=run_pipeline,
+            args=(job_id, params, user, request.headers.get("host", "localhost:8000")),
+            daemon=True,
+        )
+        thread.start()
+        job_ids[eng] = job_id
+
+    audit(user, getattr(request.state, "role", ""), "compare", detail=f"engines={engines}, compare={compare_id}")
+    return {"compare_id": compare_id, "job_ids": job_ids}
+
+
 @app.post("/api/pipeline")
 async def api_pipeline(request: Request):
     """Full pipeline: Script → Voice → Face → Post-production."""
