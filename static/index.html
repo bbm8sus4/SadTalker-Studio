@@ -549,7 +549,8 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
             <div class="fg">
               <label class="fl">แหล่งเสียง</label>
               <select class="fs" id="aMode" onchange="togAudio()">
-                <option value="tts">พิมพ์ข้อความ (TTS)</option>
+                <option value="tts">พิมพ์ข้อความ (TTS ฟรี)</option>
+                <option value="clone">Voice Clone (ElevenLabs $)</option>
                 <option value="file">อัปโหลดไฟล์เสียง</option>
               </select>
             </div>
@@ -583,6 +584,25 @@ input[type="range"]{width:100%;accent-color:var(--accent);height:4px;cursor:poin
                 <input type="file" id="audIn" accept="audio/*" onchange="onAud()">
               </div>
               <div id="audP" style="margin-top:6px;"></div>
+            </div>
+
+            <!-- Voice Clone Section -->
+            <div id="secClone" style="display:none;">
+              <div class="fg">
+                <label class="fl">เลือกเสียง clone</label>
+                <select class="fs" id="cloneVoice"><option value="">กำลังโหลด...</option></select>
+              </div>
+              <div style="margin-top:8px;padding:10px;border-radius:8px;background:var(--bg2);font-size:.82rem;color:var(--text2);">
+                <strong>สร้างเสียง clone ใหม่:</strong> อัปโหลดเสียงคนที่ต้องการ (30 วิ - 3 นาที)
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                  <input class="fi" type="text" id="cloneName" placeholder="ชื่อเสียง เช่น เสียงบอส" style="flex:1;">
+                  <div class="uzone" id="cloneAudUp" onclick="Q('#cloneAudIn').click()" style="flex:1;padding:8px;font-size:.8rem;">
+                    เลือกไฟล์เสียง
+                    <input type="file" id="cloneAudIn" accept="audio/*" style="display:none;" onchange="this.parentElement.textContent=this.files[0]?.name||'เลือกไฟล์เสียง'">
+                  </div>
+                  <button class="btn btn-g btn-sm" onclick="createClone()">Clone</button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1389,6 +1409,31 @@ function togAudio(){
   const m=$('aMode').value;
   $('secTTS').style.display=m==='tts'?'block':'none';
   $('secFile').style.display=m==='file'?'block':'none';
+  $('secClone').style.display=m==='clone'?'block':'none';
+  if(m==='clone')loadCloneVoices();
+}
+async function loadCloneVoices(){
+  try{
+    const voices=await api.get('/api/voice-clones');
+    const sel=$('cloneVoice');sel.innerHTML='';
+    if(!voices.length){sel.innerHTML='<option value="">ยังไม่มีเสียง clone — สร้างด้านล่าง</option>';return;}
+    for(const v of voices){sel.innerHTML+=`<option value="${esc(v.id)}">${esc(v.name)}</option>`;}
+  }catch(e){$('cloneVoice').innerHTML='<option value="">ต้องตั้ง ELEVENLABS_API_KEY</option>';}
+}
+async function createClone(){
+  const name=$('cloneName').value.trim();
+  const file=$('cloneAudIn').files[0];
+  if(!name){toast('ตั้งชื่อเสียงก่อน','warn');return;}
+  if(!file){toast('เลือกไฟล์เสียงก่อน','warn');return;}
+  toast('กำลัง clone เสียง...','info');
+  const fd=new FormData();fd.append('name',name);fd.append('audio',file);
+  try{
+    const r=await fetch('/api/voice-clone-upload',{method:'POST',body:fd});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.detail||'Error');
+    toast('Clone เสียง "'+name+'" สำเร็จ!','success');
+    loadCloneVoices();
+  }catch(e){toast(errLog.handle('createClone',e),'error');}
 }
 function onAud(){
   const f=$('audIn').files[0];if(!f)return;upAud=f;

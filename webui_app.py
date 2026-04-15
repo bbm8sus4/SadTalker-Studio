@@ -1101,6 +1101,101 @@ async def api_delete_user(request: Request, username: str):
     return {"ok": True}
 
 
+# ─── ElevenLabs Voice Clone API ───────────────────────────────
+
+ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
+ELEVENLABS_URL = "https://api.elevenlabs.io/v1"
+
+
+@app.get("/api/voice-clones")
+async def api_voice_clones(request: Request):
+    """List cloned voices from ElevenLabs."""
+    if not ELEVENLABS_API_KEY:
+        return []
+    try:
+        with httpx.Client(timeout=10) as client:
+            resp = client.get(f"{ELEVENLABS_URL}/voices",
+                headers={"xi-api-key": ELEVENLABS_API_KEY})
+            if resp.status_code != 200:
+                return []
+            voices = resp.json().get("voices", [])
+            return [{"id": v["voice_id"], "name": v["name"], "category": v.get("category", "")}
+                    for v in voices if v.get("category") in ("cloned", "professional")]
+    except Exception:
+        return []
+
+
+@app.post("/api/voice-clone-tts")
+async def api_voice_clone_tts(request: Request):
+    """Generate speech using cloned voice from ElevenLabs."""
+    if not ELEVENLABS_API_KEY:
+        return JSONResponse({"detail": "ElevenLabs API key ยังไม่ได้ตั้งค่า (ELEVENLABS_API_KEY)"}, 400)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"detail": "Invalid JSON"}, 400)
+
+    text = body.get("text", "").strip()
+    voice_id = body.get("voice_id", "")
+    if not text or not voice_id:
+        return JSONResponse({"detail": "ต้องระบุ text และ voice_id"}, 400)
+
+    user = getattr(request.state, "user", "")
+    audit(user, getattr(request.state, "role", ""), "voice_clone_tts", detail=f"voice={voice_id}")
+
+    try:
+        with httpx.Client(timeout=30) as client:
+            resp = client.post(f"{ELEVENLABS_URL}/text-to-speech/{voice_id}",
+                headers={"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"},
+                json={
+                    "text": text,
+                    "model_id": "eleven_multilingual_v2",
+                    "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+                })
+            if resp.status_code != 200:
+                return JSONResponse({"detail": f"ElevenLabs error: {resp.text[:200]}"}, 500)
+
+            # Save audio file
+            audio_name = f"clone_{uuid.uuid4().hex[:8]}.mp3"
+            audio_path = UPLOAD_DIR / audio_name
+            audio_path.write_bytes(resp.content)
+            return {"audio_url": f"/uploads/{audio_name}", "filename": audio_name}
+    except Exception as e:
+        return JSONResponse({"detail": str(e)}, 500)
+
+
+@app.post("/api/voice-clone-upload")
+async def api_voice_clone_upload(
+    request: Request,
+    name: str = Form(...),
+    audio: UploadFile = File(...),
+):
+    """Upload reference audio to create a cloned voice on ElevenLabs."""
+    if not ELEVENLABS_API_KEY:
+        return JSONResponse({"detail": "ElevenLabs API key ยังไม่ได้ตั้งค่า"}, 400)
+
+    content = await audio.read()
+    if len(content) < 1000:
+        return JSONResponse({"detail": "ไฟล์เสียงสั้นเกินไป ต้องอย่างน้อย 30 วินาที"}, 400)
+
+    user = getattr(request.state, "user", "")
+    audit(user, getattr(request.state, "role", ""), "voice_clone_create", detail=f"name={name}")
+
+    try:
+        with httpx.Client(timeout=60) as client:
+            resp = client.post(f"{ELEVENLABS_URL}/voices/add",
+                headers={"xi-api-key": ELEVENLABS_API_KEY},
+                data={"name": name, "description": f"Cloned by {user} via SadTalker Studio"},
+                files={"files": (audio.filename, content, "audio/mpeg")},
+            )
+            if resp.status_code != 200:
+                return JSONResponse({"detail": f"Clone failed: {resp.text[:200]}"}, 500)
+            voice_id = resp.json().get("voice_id", "")
+            return {"ok": True, "voice_id": voice_id, "name": name}
+    except Exception as e:
+        return JSONResponse({"detail": str(e)}, 500)
+
+
 # ─── Sync.so Engine (cloud lip-sync API) ─────────────────────
 
 SYNC_API_KEY = os.environ.get("SYNC_API_KEY", "")
